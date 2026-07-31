@@ -64,6 +64,12 @@ export interface StoredImage {
   type: string;
   dataUrl: string;
   createdAt: string;
+  sourceUrl?: string;
+  author?: string;
+  license?: string;
+  licenseUrl?: string;
+  attribution?: string;
+  automatic?: boolean;
 }
 
 export const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const;

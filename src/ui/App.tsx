@@ -28,7 +28,9 @@ import {
   FileText,
   Home,
   Hospital,
+  Image as ImageIcon,
   Landmark,
+  LoaderCircle,
   LocateFixed,
   Map as MapIcon,
   MapPin,
@@ -61,6 +63,7 @@ import type {
   BackupData,
   Category,
   Expense,
+  StoredImage,
   TripDay,
 } from '../domain/types';
 import { categories, statuses, weekdays } from '../domain/types';
@@ -70,7 +73,10 @@ import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
 import { findItineraryGaps } from '../services/planning';
 import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from '../services/links';
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
+import { findAndStorePlaceImage } from '../services/placeImages';
 import {
+  addAccommodationImageIfMissing,
+  addActivityImageIfMissing,
   createActivity,
   deleteAccommodation,
   deleteActivity,
@@ -107,6 +113,7 @@ import { ExploreView } from './Explore';
 
 const today = new Date().toISOString().slice(0, 10);
 const worldCenter: [number, number] = [20, 0];
+const automaticPhotoAttempts = new Set<string>();
 
 const markerIconComponents: Record<MapMarkerKind, LucideIcon> = {
   accommodation: BedDouble,
@@ -759,6 +766,29 @@ function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleD
 }) {
   const navigate = useNavigate();
   const stale = isActivityStale(activity, staleDays);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  const photo = activity.gallery.find((image) => image.dataUrl === activity.mainImage) ?? activity.gallery[0];
+  useEffect(() => {
+    const attemptKey = `activity|${activity.id}|${activity.title}|${activity.address}`;
+    if (activity.mainImage || !navigator.onLine || automaticPhotoAttempts.has(attemptKey)) return;
+    automaticPhotoAttempts.add(attemptKey);
+    let mounted = true;
+    void Promise.resolve()
+      .then(() => {
+        if (mounted) setPhotoLoading(true);
+        return findAndStorePlaceImage(activity.title, activity.address);
+      })
+      .then(async (image) => {
+        if (!image) return;
+        const saved = await addActivityImageIfMissing(activity.id, image);
+        if (saved && mounted) await refresh();
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setPhotoLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [activity.address, activity.id, activity.mainImage, activity.title, refresh]);
   const doShare = async () => {
     const text = shareText(activity.title, [activity.startTime, activity.address, activity.notes]);
     if (navigator.share) await navigator.share({ title: activity.title, text });
@@ -769,7 +799,13 @@ function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleD
   };
   return (
     <article className={`activity-card ${activity.visited ? 'done' : ''} ${activity.planType === 'Alternativa' ? 'alternative' : ''}`}>
-      {activity.mainImage && <img className="activity-image" src={activity.mainImage} alt="" />}
+      {activity.mainImage && (
+        <figure className="activity-photo">
+          <img className="activity-image" src={activity.mainImage} alt={activity.title} />
+          <PhotoCredit image={photo} />
+        </figure>
+      )}
+      {photoLoading && <div className="photo-loading" role="status"><LoaderCircle className="spinning" size={18} /> Buscando fotografía del lugar</div>}
       <div className={`category-dot ${activity.category.toLowerCase().replace(/\s/g, '-')}`} aria-hidden="true" />
       <div className="activity-main">
         <div className="activity-title-row">
@@ -839,9 +875,28 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
     environment: 'Sin indicar',
   });
   const [error, setError] = useState('');
+  const [photoLoading, setPhotoLoading] = useState(false);
   const set = <K extends keyof Activity>(key: K, value: Activity[K]) => setForm((current) => ({ ...current, [key]: value }));
   const setPrice = <K extends keyof Activity['priceDetails']>(key: K, value: Activity['priceDetails'][K]) =>
     setForm((current) => ({ ...current, priceDetails: { ...emptyPriceDetails(current.currency ?? 'GBP'), ...(current.priceDetails ?? {}), [key]: value } }));
+  const searchPhoto = async () => {
+    if (!form.title?.trim()) return setError('Escribe primero el nombre del lugar.');
+    setPhotoLoading(true);
+    setError('');
+    try {
+      const image = await findAndStorePlaceImage(form.title, form.address, true);
+      if (!image) return setError('No se encontró una fotografía adecuada. Puedes añadir una desde tu dispositivo.');
+      setForm((current) => ({
+        ...current,
+        mainImage: image.dataUrl,
+        gallery: [...(current.gallery ?? []).filter((item) => !item.automatic), image],
+      }));
+    } catch {
+      setError('No se pudo buscar la fotografía. La actividad puede guardarse igualmente.');
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
   const submit = async () => {
     if (!form.title?.trim()) return setError('El título es obligatorio.');
     if (!form.day || !availableDays.includes(form.day)) return setError('Selecciona un día válido.');
@@ -957,9 +1012,13 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
             setForm((current) => ({ ...current, mainImage: image.dataUrl, gallery: [...(current.gallery ?? []), image] }));
           }}
         />
+        <button type="button" className="secondary photo-search-button" disabled={photoLoading} onClick={searchPhoto}>
+          {photoLoading ? <LoaderCircle className="spinning" size={18} /> : <ImageIcon size={18} />}
+          {photoLoading ? 'Buscando fotografía' : form.mainImage ? 'Actualizar fotografía automática' : 'Buscar fotografía automática'}
+        </button>
         {form.mainImage && (
           <div className="image-editor-preview">
-            <img src={form.mainImage} alt="Vista previa de la actividad" />
+            <figure><img src={form.mainImage} alt="Vista previa de la actividad" /><PhotoCredit image={form.gallery?.find((image) => image.dataUrl === form.mainImage)} /></figure>
             <button className="danger-button" onClick={() => setForm((current) => ({ ...current, mainImage: '', gallery: [] }))}><Trash2 size={17} /> Eliminar fotografías</button>
           </div>
         )}
@@ -1041,9 +1100,59 @@ function AccommodationsPanel({ snapshot, refresh, notify }: ViewProps) {
 
 function EditableAccommodation({ accommodation, refresh, notify }: { accommodation: Accommodation; refresh: () => Promise<void>; notify: (m: string) => void }) {
   const [item, setItem] = useState(accommodation);
+  const [photoLoading, setPhotoLoading] = useState(false);
+  useEffect(() => {
+    const attemptKey = `accommodation|${accommodation.id}|${accommodation.name}|${accommodation.address}`;
+    if (accommodation.images.length || !navigator.onLine || automaticPhotoAttempts.has(attemptKey) || /^nuevo alojamiento$/i.test(accommodation.name.trim())) return;
+    automaticPhotoAttempts.add(attemptKey);
+    let mounted = true;
+    void Promise.resolve()
+      .then(() => {
+        if (mounted) setPhotoLoading(true);
+        return findAndStorePlaceImage(accommodation.name, accommodation.address);
+      })
+      .then(async (image) => {
+        if (!image) return;
+        const saved = await addAccommodationImageIfMissing(accommodation.id, image);
+        if (saved && mounted) {
+          setItem((current) => current.images.length ? current : { ...current, images: [image] });
+          await refresh();
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (mounted) setPhotoLoading(false);
+      });
+    return () => { mounted = false; };
+  }, [accommodation.address, accommodation.id, accommodation.images.length, accommodation.name, refresh]);
+
+  const searchPhoto = async () => {
+    if (!item.name.trim() || /^nuevo alojamiento$/i.test(item.name.trim())) return notify('Escribe primero el nombre del alojamiento');
+    setPhotoLoading(true);
+    try {
+      const image = await findAndStorePlaceImage(item.name, item.address, true);
+      if (!image) return notify('No se encontró una fotografía adecuada');
+      const updated = { ...item, images: [image] };
+      setItem(updated);
+      await putAccommodation(updated);
+      await refresh();
+      notify('Fotografía automática añadida');
+    } catch {
+      notify('No se pudo buscar la fotografía; puedes añadir una manualmente');
+    } finally {
+      setPhotoLoading(false);
+    }
+  };
   return (
     <article className="form-card">
       <h3>{item.name}</h3>
+      {item.images[0] && (
+        <figure className="accommodation-photo">
+          <img src={item.images[0].dataUrl} alt={item.name} />
+          <PhotoCredit image={item.images[0]} />
+        </figure>
+      )}
+      {photoLoading && <div className="photo-loading" role="status"><LoaderCircle className="spinning" size={18} /> Buscando fotografía del alojamiento</div>}
       <label>Nombre<input value={item.name} onChange={(event) => setItem({ ...item, name: event.target.value })} /></label>
       <label>Dirección<input value={item.address} onChange={(event) => setItem({ ...item, address: event.target.value })} /></label>
       <div className="two-cols">
@@ -1067,6 +1176,14 @@ function EditableAccommodation({ accommodation, refresh, notify }: { accommodati
       <label>Equipaje<textarea value={item.luggageNotes} onChange={(event) => setItem({ ...item, luggageNotes: event.target.value })} /></label>
       <label>Notas<textarea value={item.notes} onChange={(event) => setItem({ ...item, notes: event.target.value })} /></label>
       <label className="checkbox"><input type="checkbox" checked={item.active} onChange={(event) => setItem({ ...item, active: event.target.checked })} /> Marcar activo</label>
+      <div className="button-row">
+        <ImageInput onImage={async (image) => setItem((current) => ({ ...current, images: [...current.images, image] }))} />
+        <button type="button" className="secondary" disabled={photoLoading} onClick={searchPhoto}>
+          {photoLoading ? <LoaderCircle className="spinning" size={18} /> : <ImageIcon size={18} />}
+          {item.images.length ? 'Actualizar fotografía automática' : 'Buscar fotografía automática'}
+        </button>
+        {!!item.images.length && <button type="button" className="danger-button" onClick={() => setItem({ ...item, images: [] })}><Trash2 size={17} /> Eliminar fotografía</button>}
+      </div>
       <div className="button-row">
         <MapButtons query={item.address} />
         <button className="primary" onClick={async () => { await putAccommodation(item); await refresh(); notify('Alojamiento guardado'); }}>Guardar</button>
@@ -1240,7 +1357,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.3.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.4.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
@@ -1284,6 +1401,19 @@ function ImageInput({ onImage }: { onImage: (image: Awaited<ReturnType<typeof im
       }} />
       {error && <span className="error">{error}</span>}
     </label>
+  );
+}
+
+function PhotoCredit({ image }: { image?: StoredImage }) {
+  if (!image?.automatic) return null;
+  const author = image.author || 'Wikimedia Commons';
+  const sourceUrl = image.sourceUrl ?? '';
+  const licenseUrl = image.licenseUrl ?? '';
+  return (
+    <figcaption className="photo-credit">
+      Foto: {isSafeExternalUrl(sourceUrl) ? <a href={sourceUrl} target="_blank" rel="noreferrer">{author}</a> : author}
+      {image.license && <> · {isSafeExternalUrl(licenseUrl) ? <a href={licenseUrl} target="_blank" rel="noreferrer">{image.license}</a> : image.license}</>}
+    </figcaption>
   );
 }
 

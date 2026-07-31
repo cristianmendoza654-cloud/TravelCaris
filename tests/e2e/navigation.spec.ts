@@ -92,7 +92,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.3.1')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.4.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

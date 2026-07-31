@@ -29,6 +29,7 @@ El build se genera en `dist`.
 - Creador de encargos para ChatGPT sin API: entrevista guiada, instrucciones de planificación y anexo `TRAVELCARIS-AI-PDF-V1` optimizado para volver a importar el PDF.
 - Inicio con días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
 - Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje y recordatorios.
+- Fotografías automáticas de actividades y alojamientos mediante Wikimedia Commons, guardadas localmente con autor, licencia y enlace de procedencia; también admite fotos propias.
 - Actividades enriquecidas con horario planificado, horario semanal por intervalos, fechas especiales, precios por tipo de viajero, reservas, accesibilidad, plan de lluvia y trazabilidad de la fuente.
 - Alternativas separadas del plan principal y detección de huecos que propone búsquedas sin reordenar el día.
 - Explorar por ciudad, zona, alojamiento, actividad, dirección, marcador o ubicación solicitada explícitamente.
@@ -55,6 +56,8 @@ TravelCaris funciona completamente sin API:
 - no promete información automática en tiempo real.
 
 Las búsquedas de lugares se abren en proveedores externos con texto correctamente codificado. TravelCaris no hace scraping ni intenta extraer contenido restringido. Cuando un proveedor no ofrece una URL de búsqueda estable, la app copia el texto de consulta antes de abrirlo. Horarios, precios y condiciones pueden caducar; cada ficha conserva fuente, estado y fecha de verificación y muestra un aviso según el umbral configurable.
+
+Las fotografías automáticas usan la API pública de Wikimedia Commons y no requieren clave. La app intenta comprimirlas y guardarlas en IndexedDB para mantenerlas disponibles sin conexión; si no encuentra una imagen adecuada o no hay red, el elemento se guarda igualmente y puede recibir una foto manual.
 
 En cada vuelo aparece el número y la fecha que deben introducirse si la fuente oficial no admite un enlace directo estable.
 

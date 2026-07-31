@@ -27,6 +27,7 @@ import type {
   SavedPlace,
   SearchHistoryEntry,
   SearchProvider,
+  StoredImage,
   Transport,
   TravelDocument,
   Trip,
@@ -136,6 +137,21 @@ async function activeTripId() {
 export async function saveActivity(activity: Activity) {
   await ensureInitialData();
   await db.activities.put(completeActivity({ ...activity, date: activity.day, updatedAt: new Date().toISOString() }));
+}
+
+export async function addActivityImageIfMissing(id: string, image: StoredImage) {
+  await ensureInitialData();
+  return db.transaction('rw', db.activities, async () => {
+    const activity = await db.activities.get(id);
+    if (!activity || activity.mainImage) return false;
+    await db.activities.put(completeActivity({
+      ...activity,
+      mainImage: image.dataUrl,
+      gallery: [...activity.gallery, image],
+      updatedAt: new Date().toISOString(),
+    }));
+    return true;
+  });
 }
 
 export async function createActivity(input: Partial<Activity> & Pick<Activity, 'title' | 'day'>) {
@@ -257,6 +273,16 @@ export async function moveActivity(id: string, day: TripDay) {
 export async function putAccommodation(accommodation: Accommodation) {
   await ensureInitialData();
   await db.accommodations.put({ ...accommodation, updatedAt: new Date().toISOString() });
+}
+
+export async function addAccommodationImageIfMissing(id: string, image: StoredImage) {
+  await ensureInitialData();
+  return db.transaction('rw', db.accommodations, async () => {
+    const accommodation = await db.accommodations.get(id);
+    if (!accommodation || accommodation.images.length) return false;
+    await db.accommodations.put({ ...accommodation, images: [image], updatedAt: new Date().toISOString() });
+    return true;
+  });
 }
 
 export async function deleteAccommodation(id: string) {
@@ -757,7 +783,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.3.1',
+    version: '3.4.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,
