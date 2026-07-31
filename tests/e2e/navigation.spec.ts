@@ -183,6 +183,8 @@ test('los controles de una tarjeta permiten editar, revisar y reordenar', async 
   await page.getByRole('button', { name: 'Guardar', exact: true }).click();
 
   const card = page.locator('.activity-card').filter({ hasText: 'Museo de prueba' });
+  await expect(card.getByText('Principal', { exact: true })).toHaveCount(0);
+  await expect(card.getByRole('link', { name: 'Ver detalles de Museo de prueba' })).toContainText('Ver detalles');
   await expect(card.getByRole('button', { name: 'Reordenar Museo de prueba' })).toBeVisible();
   await expect(card.getByRole('button', { name: 'Reordenar Museo de prueba' })).toContainText('Ordenar');
   await expect(card.getByRole('button', { name: 'Editar actividad' })).toContainText('Editar');
@@ -198,6 +200,14 @@ test('los controles de una tarjeta permiten editar, revisar y reordenar', async 
   await card.getByText('Más acciones', { exact: true }).click();
   await expect(card.getByRole('button', { name: 'Duplicar actividad' })).toContainText('Duplicar');
   await expect(card.getByRole('button', { name: 'Eliminar actividad' })).toContainText('Eliminar');
+
+  await card.getByRole('link', { name: 'Ver detalles de Museo de prueba' }).click();
+  await expect(page.getByRole('heading', { name: 'Museo de prueba', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Plan del día' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Precio y reserva' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Información práctica' })).toBeVisible();
+  await page.getByRole('button', { name: 'Cerrar detalle' }).click();
+  await expect(page.getByRole('heading', { name: 'Itinerario' })).toBeVisible();
 });
 
 test('permite marcar manualmente un paso de preparación como revisado', async ({ page }) => {
@@ -238,7 +248,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.8.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.8.1')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

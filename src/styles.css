@@ -57,6 +57,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .category-dot.museo { background: #6b5aa6; } .category-dot.restaurante, .category-dot.mercado { background: var(--accent); } .category-dot.parque { background: var(--green); } .category-dot.transporte { background: #2f79b7; } .category-dot.alojamiento { background: var(--gold); }
 .activity-title-row { display: flex; gap: 10px; align-items: baseline; }
 .activity-title-row h3 { margin: 0; font-size: 1.08rem; }
+.activity-title-link { color: inherit; text-decoration: none; }
+.activity-title-link:hover { color: var(--brand); text-decoration: underline; text-underline-offset: 3px; }
 .time { font-weight: 900; color: var(--brand); min-width: 48px; }
 .activity-main p { margin: 7px 0; color: var(--muted); }
 .muted { color: var(--muted); }
@@ -71,6 +73,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .activity-more-actions summary::-webkit-details-marker { display: none; }
 .activity-more-actions[open] summary { border-color: var(--brand); color: var(--brand); }
 .activity-more-actions > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding: 10px; border-left: 3px solid var(--brand); background: var(--surface-alt); }
+.activity-detail-link { background: color-mix(in srgb, var(--brand) 8%, var(--surface)); border-color: color-mix(in srgb, var(--brand) 35%, var(--line)) !important; color: var(--brand) !important; }
 .drag-handle { cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
 button, .external-button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease; }
@@ -255,6 +258,13 @@ textarea { min-height: 86px; resize: vertical; }
 .detail-row:last-child { border-bottom: 0; }
 .detail-row span { color: var(--muted); }
 .detail-row strong { text-align: right; overflow-wrap: anywhere; }
+.activity-detail-header { display: grid; grid-template-columns: minmax(0, 320px) minmax(0, 1fr); gap: 20px; align-items: center; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); box-shadow: var(--shadow); }
+.activity-detail-header > figure { min-width: 0; margin: 0; overflow: hidden; border-radius: 7px; background: var(--surface-alt); }
+.activity-detail-header > figure img { display: block; width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.activity-detail-header h2 { margin: 0; font-size: 2rem; line-height: 1.08; overflow-wrap: anywhere; }
+.activity-detail-header > div > p:not(.eyebrow) { color: var(--muted); }
+.activity-detail-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.activity-detail-commands .map-buttons { display: contents; }
 .time-comparison { display: grid; grid-template-columns: 1fr repeat(3, auto); gap: 8px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
 .time-comparison span { font-size: 0.78rem; color: var(--muted); }
 .history-list { display: grid; gap: 8px; }
@@ -406,6 +416,8 @@ textarea { min-height: 86px; resize: vertical; }
   .home-summary strong { font-size: 1rem; }
   .flight-meta { grid-template-columns: 1fr; }
   .flight-detail-grid, .trip-list { grid-template-columns: 1fr; }
+  .activity-detail-header, .activity-detail-grid { grid-template-columns: 1fr; }
+  .activity-detail-header h2 { font-size: 1.65rem; }
   .flight-source-row { display: grid; }
   .flight-source-row span:last-child { text-align: left; }
   .time-comparison { grid-template-columns: 1fr; }

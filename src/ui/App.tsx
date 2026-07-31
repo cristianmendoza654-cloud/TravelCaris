@@ -33,6 +33,7 @@ import {
   Home,
   Hospital,
   Image as ImageIcon,
+  Info,
   Landmark,
   LoaderCircle,
   LocateFixed,
@@ -61,7 +62,7 @@ import { divIcon } from 'leaflet';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
+import { NavLink, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { v4 as uuid } from 'uuid';
 import type {
@@ -180,6 +181,7 @@ function LoadedApp({ snapshot, refresh, notify, notice }: ViewProps & { notice: 
         <Routes>
           <Route path="/" element={<TodayView snapshot={snapshot} refresh={refresh} notify={notify} />} />
           <Route path="/itinerario" element={<ItineraryView snapshot={snapshot} refresh={refresh} notify={notify} />} />
+          <Route path="/itinerario/:activityId" element={<ActivityDetailView snapshot={snapshot} refresh={refresh} notify={notify} />} />
           <Route path="/explorar" element={<ExploreView snapshot={snapshot} refresh={refresh} notify={notify} />} />
           <Route path="/vuelos" element={<FlightsView snapshot={snapshot} refresh={refresh} notify={notify} />} />
           <Route path="/vuelos/:flightId" element={<FlightDetailView snapshot={snapshot} refresh={refresh} notify={notify} />} />
@@ -962,6 +964,138 @@ function Hero({ trip, title, subtitle, action }: { trip: Trip; title: string; su
   );
 }
 
+function ActivityDetailView({ snapshot, refresh, notify }: ViewProps) {
+  const { activityId } = useParams();
+  const navigate = useNavigate();
+  const [editing, setEditing] = useState(false);
+  const activity = snapshot.activities.find((item) => item.id === activityId);
+  const availableDays = tripDateRange(snapshot.activeTrip.startDate, snapshot.activeTrip.endDate);
+
+  if (!activity) {
+    return (
+      <section className="form-card">
+        <h2>Actividad no encontrada</h2>
+        <p>Puede que se haya eliminado o pertenezca a otro viaje.</p>
+        <button onClick={() => navigate('/itinerario')}>Volver al itinerario</button>
+      </section>
+    );
+  }
+
+  const photo = activity.gallery.find((image) => image.dataUrl === activity.mainImage) ?? activity.gallery[0];
+  const priceDetails = activity.priceDetails;
+  const practicalDetails = [
+    ['Entorno', activity.environment],
+    ['Accesibilidad', activity.accessibility],
+    ['Edad mínima', activity.minimumAge],
+    ['Plan de lluvia', activity.rainPlan],
+    ['Horario especial', activity.specialHours],
+  ].filter(([, value]) => value && value !== 'Sin indicar');
+  const categoryDetails = [
+    ['Punto de encuentro', activity.meetingPoint],
+    ['Proveedor del tour', activity.tourProvider],
+    ['Idioma', activity.tourLanguage],
+    ['Tipo de tour', activity.tourType],
+    ['Propina orientativa', activity.tipGuidance],
+    ['Cocina', activity.restaurantCuisine],
+    ['Tipo de comida', activity.mealType],
+    ['Opciones alimentarias', activity.dietaryOptions],
+    ['Plataforma de reserva', activity.bookingPlatform],
+    ['Tipo de ocio', activity.leisureType],
+    ['Sesión', activity.showTime],
+    ['Recinto', activity.venue],
+  ].filter(([, value]) => Boolean(value));
+
+  return (
+    <section className="page-stack activity-detail-page">
+      <button className="back-button" onClick={() => navigate('/itinerario')}><X size={18} /> Cerrar detalle</button>
+      <header className="activity-detail-header">
+        {activity.mainImage && (
+          <figure>
+            <img src={activity.mainImage} alt={activity.title} />
+            <PhotoCredit image={photo} />
+          </figure>
+        )}
+        <div>
+          <p className="eyebrow">{activity.category}{activity.planType === 'Alternativa' ? ' · Alternativa' : ''}</p>
+          <h2>{activity.title}</h2>
+          {activity.description && <p>{activity.description}</p>}
+          <div className="meta-row">
+            <span>{activity.status}</span>
+            <span>{formatDate(activity.day)}</span>
+            <span>{activity.startTime}{activity.endTime ? `-${activity.endTime}` : ''}</span>
+          </div>
+        </div>
+      </header>
+
+      <div className="button-row activity-detail-commands">
+        <button className="primary" onClick={() => setEditing(true)}><Edit3 size={18} /> Editar actividad</button>
+        <MapButtons query={activity.address || activity.title} />
+        {isSafeExternalUrl(activity.officialLink) && <a className="external-button" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /> Web oficial</a>}
+        {isSafeExternalUrl(activity.reservationLink) && <a className="external-button" href={activity.reservationLink} target="_blank" rel="noreferrer"><Ticket size={18} /> Reserva</a>}
+        <button onClick={async () => { await saveActivity({ ...activity, visited: !activity.visited, status: activity.visited ? 'Pendiente' : 'Realizado' }); await refresh(); notify(activity.visited ? 'Actividad reabierta' : 'Actividad realizada'); }}><Check size={18} /> {activity.visited ? 'Reabrir' : 'Marcar realizada'}</button>
+      </div>
+
+      <div className="activity-detail-grid">
+        <ActivityDetailSection title="Plan del día">
+          <ActivityDetailRow label="Fecha" value={formatDate(activity.day)} />
+          <ActivityDetailRow label="Horario" value={`${activity.startTime}${activity.endTime ? `-${activity.endTime}` : ''}`} />
+          <ActivityDetailRow label="Duración" value={`${activity.estimatedDurationMinutes} min`} />
+          <ActivityDetailRow label="Dirección" value={activity.address || 'Sin dirección'} />
+          {activity.phone && <ActivityDetailRow label="Teléfono" value={activity.phone} />}
+        </ActivityDetailSection>
+
+        <ActivityDetailSection title="Precio y reserva">
+          <ActivityDetailRow label="Precio" value={priceLabel(activity, snapshot.activeTrip)} />
+          <ActivityDetailRow label="Reserva" value={activity.reservationStatus} />
+          {priceDetails.adult > 0 && <ActivityDetailRow label="Adulto" value={formatMoney(priceDetails.adult, priceDetails.currency)} />}
+          {priceDetails.child > 0 && <ActivityDetailRow label="Niño" value={formatMoney(priceDetails.child, priceDetails.currency)} />}
+          {priceDetails.family > 0 && <ActivityDetailRow label="Familia" value={formatMoney(priceDetails.family, priceDetails.currency)} />}
+          {activity.bookingDeadline && <ActivityDetailRow label="Plazo" value={activity.bookingDeadline} />}
+          {activity.cancellationPolicy && <ActivityDetailRow label="Cancelación" value={activity.cancellationPolicy} />}
+          {activity.reservationReference && <ActivityDetailRow label="Referencia local" value={activity.reservationReference} />}
+        </ActivityDetailSection>
+
+        <ActivityDetailSection title="Información práctica">
+          {activity.openingHoursNote && <ActivityDetailRow label="Horario de apertura" value={activity.openingHoursNote} />}
+          {practicalDetails.map(([label, value]) => <ActivityDetailRow key={label} label={label} value={value} />)}
+          <ActivityDetailRow label="Familiar" value={activity.familyFriendly ? 'Sí' : 'Sin indicar'} />
+          <ActivityDetailRow label="Apto para carrito" value={activity.strollerFriendly ? 'Sí' : 'Sin indicar'} />
+        </ActivityDetailSection>
+
+        {(categoryDetails.length > 0 || activity.notes) && (
+          <ActivityDetailSection title="Detalles del evento">
+            {categoryDetails.map(([label, value]) => <ActivityDetailRow key={label} label={label} value={value} />)}
+            {activity.notes && <ActivityDetailRow label="Notas" value={activity.notes} />}
+          </ActivityDetailSection>
+        )}
+
+        <ActivityDetailSection title="Fuente y revisión">
+          <ActivityDetailRow label="Estado" value={activity.verificationStatus} />
+          <ActivityDetailRow label="Última comprobación" value={activity.lastVerifiedAt ? formatDate(activity.lastVerifiedAt) : 'Pendiente'} />
+          {activity.sourceName && <ActivityDetailRow label="Fuente" value={activity.sourceName} />}
+          {activity.verificationNote && <ActivityDetailRow label="Nota" value={activity.verificationNote} />}
+        </ActivityDetailSection>
+      </div>
+
+      <div className="danger-zone">
+        <h3>Eliminar actividad</h3>
+        <p>Esta acción elimina la actividad del itinerario de este dispositivo.</p>
+        <button className="danger-button" onClick={async () => { if (!confirm(`¿Eliminar “${activity.title}”?`)) return; await deleteActivity(activity.id); await refresh(); notify('Actividad eliminada'); navigate('/itinerario'); }}><Trash2 size={18} /> Eliminar actividad</button>
+      </div>
+
+      {editing && <ActivityEditor activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} defaultDay={activity.day} onClose={() => setEditing(false)} onSaved={async () => { await refresh(); setEditing(false); notify('Actividad actualizada'); }} />}
+    </section>
+  );
+}
+
+function ActivityDetailSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return <section className="detail-section"><h3>{title}</h3>{children}</section>;
+}
+
+function ActivityDetailRow({ label, value }: { label: string; value: React.ReactNode }) {
+  return <div className="detail-row"><span>{label}</span><strong>{value}</strong></div>;
+}
+
 function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, dragHandle, staleDays = 30, compact = false }: {
   activity: Activity;
   trip: Trip;
@@ -1023,13 +1157,13 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
       <div className="activity-main">
         <div className="activity-title-row">
           <span className="time">{activity.startTime}{activity.endTime ? `-${activity.endTime}` : ''}</span>
-          <h3>{activity.title}</h3>
+          <h3><NavLink className="activity-title-link" to={`/itinerario/${activity.id}`}>{activity.title}</NavLink></h3>
         </div>
         <p>{activity.description}</p>
         {!compact && <p className="muted">{activity.address}</p>}
         <div className="meta-row">
           <span>{activity.category}</span>
-          <span>{activity.planType}</span>
+          {activity.planType === 'Alternativa' && <span>Alternativa</span>}
           <span>{activity.estimatedDurationMinutes} min</span>
           <span>{activity.reservationStatus}</span>
           {activity.priority === 'Premium' && <span>Premium</span>}
@@ -1040,6 +1174,7 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
         {!compact && activity.rainPlan && <p className="detail-line"><strong>Lluvia:</strong> {activity.rainPlan}</p>}
         {!compact && (activity.strollerFriendly || activity.accessibility) && <p className="detail-line"><strong>Acceso:</strong> {activity.strollerFriendly ? 'Apto para carrito. ' : ''}{activity.accessibility}</p>}
         <div className="activity-actions">
+          <NavLink className="activity-detail-link" aria-label={`Ver detalles de ${activity.title}`} to={`/itinerario/${activity.id}`}><Info size={18} /><span>Ver detalles</span></NavLink>
           {dragHandle}
           {onEdit && <button aria-label="Editar actividad" onClick={onEdit}><Edit3 size={18} /><span>Editar</span></button>}
           {stale && <button aria-label="Marcar datos como revisados" onClick={async () => { await saveActivity({ ...activity, verificationStatus: 'Verificado', lastVerifiedAt: new Date().toISOString().slice(0, 10) }); await refresh(); notify('Datos de la actividad marcados como revisados'); }}><BadgeCheck size={18} /><span>Revisado</span></button>}
@@ -1690,7 +1825,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.8.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.8.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
