@@ -22,10 +22,9 @@ test('abre la importación privada de PDF', async ({ page }) => {
   await expect(page.locator('input[type="file"][accept*="pdf"]')).toHaveCount(1);
 });
 
-test('importa en WebKit móvil sin depender de APIs modernas ni del MIME', async ({ page }) => {
+test('importa en WebKit móvil sin depender de APIs de archivo modernas ni del MIME', async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(Blob.prototype, 'arrayBuffer', { value: undefined, configurable: true });
-    Object.defineProperty(globalThis, 'Worker', { value: undefined, configurable: true });
   });
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: /principal/i });
@@ -39,6 +38,15 @@ test('importa en WebKit móvil sin depender de APIs modernas ni del MIME', async
 
   await expect(page.getByLabel('Resumen detectado')).toBeVisible({ timeout: 30_000 });
   await expect(page.getByText(/Formato TravelCaris IA detectado/i)).toBeVisible();
+});
+
+test('importa un PDF real en WebKit móvil cuando se proporciona localmente', async ({ page }) => {
+  const pdfPath = process.env.TRAVELCARIS_TEST_PDF;
+  test.skip(!pdfPath, 'No se proporcionó un PDF privado para esta comprobación local.');
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Importar PDF' }).click();
+  await page.locator('input[type="file"][accept*="pdf"]').setInputFiles(pdfPath!);
+  await expect(page.getByLabel('Resumen detectado')).toBeVisible({ timeout: 30_000 });
 });
 
 test('muestra la ubicación actual solo después de conceder permiso', async ({ page, context }) => {
@@ -84,7 +92,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.3.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.3.1')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

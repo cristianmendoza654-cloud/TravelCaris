@@ -87,15 +87,12 @@ export async function extractPdfPages(file: File): Promise<string[]> {
   const signature = new TextDecoder('ascii').decode(data.slice(0, 1024));
   if (!signature.includes('%PDF-')) throw new Error('El archivo seleccionado no contiene un PDF válido.');
 
-  const [{ getDocument }, workerModule] = await Promise.all([
+  const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
     import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
   ]);
-
-  // Some iOS web views and installed PWAs cannot start PDF.js module workers
-  // reliably. Exposing the handler makes PDF.js parse locally on every browser.
-  (globalThis as typeof globalThis & { pdfjsWorker?: typeof workerModule }).pdfjsWorker = workerModule;
-  const loadingTask = getDocument({ data });
+  GlobalWorkerOptions.workerSrc = workerModule.default;
+  const loadingTask = getDocument({ data, isEvalSupported: false });
   try {
     const document = await loadingTask.promise;
     const pages: string[] = [];

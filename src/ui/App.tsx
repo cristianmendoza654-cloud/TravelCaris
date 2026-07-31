@@ -1240,7 +1240,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.3.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.3.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
