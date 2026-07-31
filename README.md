@@ -29,6 +29,8 @@ El build se genera en `dist`.
 - Creador de encargos para ChatGPT sin API: entrevista guiada, instrucciones de planificación y anexo `TRAVELCARIS-AI-PDF-V1` optimizado para volver a importar el PDF.
 - Inicio con días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
 - Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje y recordatorios.
+- Moneda del destino y del viajero por viaje, con último cambio publicado, equivalencias en precios y gastos, y conservación del valor para uso sin conexión.
+- Recordatorios con fecha, hora, edición, aviso dentro de la PWA y exportación `.ics` al calendario nativo.
 - Fotografías automáticas de actividades y alojamientos mediante Wikimedia Commons, guardadas localmente con autor, licencia y enlace de procedencia; también admite fotos propias.
 - Actividades enriquecidas con horario planificado, horario semanal por intervalos, fechas especiales, precios por tipo de viajero, reservas, accesibilidad, plan de lluvia y trazabilidad de la fuente.
 - Alternativas separadas del plan principal y detección de huecos que propone búsquedas sin reordenar el día.
@@ -58,6 +60,10 @@ TravelCaris funciona completamente sin API:
 Las búsquedas de lugares se abren en proveedores externos con texto correctamente codificado. TravelCaris no hace scraping ni intenta extraer contenido restringido. Cuando un proveedor no ofrece una URL de búsqueda estable, la app copia el texto de consulta antes de abrirlo. Horarios, precios y condiciones pueden caducar; cada ficha conserva fuente, estado y fecha de verificación y muestra un aviso según el umbral configurable.
 
 Las fotografías automáticas usan la API pública de Wikimedia Commons y no requieren clave. La app intenta comprimirlas y guardarlas en IndexedDB para mantenerlas disponibles sin conexión; si no encuentra una imagen adecuada o no hay red, el elemento se guarda igualmente y puede recibir una foto manual.
+
+El cambio de moneda usa [Frankfurter](https://frankfurter.dev/), no requiere clave y se actualiza como máximo cada seis horas cuando hay conexión. Es un tipo de referencia publicado por bancos centrales, no una cotización transaccional instantánea; la fecha y la fuente aparecen junto al cambio y el último valor queda guardado en el viaje.
+
+Los recordatorios vencidos se muestran al abrir TravelCaris y pueden generar una notificación mientras la PWA está activa. iOS no permite a una PWA puramente local ejecutar temporizadores indefinidamente cuando está cerrada, por lo que cada recordatorio puede añadirse al calendario del sistema para obtener un aviso nativo fiable en segundo plano.
 
 En cada vuelo aparece el número y la fecha que deben introducirse si la fuente oficial no admite un enlace directo estable.
 

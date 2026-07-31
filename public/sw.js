@@ -1,5 +1,5 @@
 /* global self, caches, fetch, URL, location */
-const CACHE_NAME = 'travelcaris-v9';
+const CACHE_NAME = 'travelcaris-v10';
 const APP_SHELL = [
   '/',
   '/index.html',
@@ -52,5 +52,15 @@ self.addEventListener('fetch', (event) => {
       }
       return response;
     })),
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windows) => {
+      const existing = windows[0];
+      return existing ? existing.focus() : self.clients.openWindow('/');
+    }),
   );
 });

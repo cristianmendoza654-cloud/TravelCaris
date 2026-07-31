@@ -1,5 +1,11 @@
 export type TripDay = string;
 
+export const currencyCodes = [
+  'EUR', 'GBP', 'USD', 'CHF', 'JPY', 'CAD', 'AUD', 'NZD', 'SEK', 'NOK', 'DKK', 'PLN', 'CZK',
+  'HUF', 'TRY', 'AED', 'CNY', 'HKD', 'SGD', 'THB', 'MAD', 'MXN', 'BRL', 'INR', 'KRW', 'ZAR', 'ISK',
+] as const;
+export type CurrencyCode = (typeof currencyCodes)[number];
+
 export const tripStatuses = ['Próximo', 'En curso', 'Finalizado', 'Archivado'] as const;
 export type TripStatus = (typeof tripStatuses)[number];
 
@@ -15,6 +21,9 @@ export interface Trip {
   currency: 'GBP' | 'EUR' | string;
   secondaryCurrency: 'GBP' | 'EUR' | string;
   exchangeRate: number;
+  exchangeRateDate?: string;
+  exchangeRateUpdatedAt?: string;
+  exchangeRateSource?: string;
   travellers: string[];
   status: TripStatus;
   createdAt: string;
@@ -98,7 +107,7 @@ export interface PriceDetails {
   baby: number;
   family: number;
   totalEstimate: number;
-  currency: 'GBP' | 'EUR';
+  currency: string;
   unit: 'persona' | 'familia' | 'actividad';
   note: string;
 }
@@ -126,7 +135,7 @@ export interface Activity {
   adultPrice: number;
   childPrice: number;
   estimatedTotalPrice: number;
-  currency: 'GBP' | 'EUR';
+  currency: string;
   reservationRequired: boolean;
   reservationDone: boolean;
   reservationReference: string;
@@ -308,7 +317,7 @@ export interface Expense {
   category: 'Transporte' | 'Comida' | 'Entradas' | 'Compras' | 'Alojamiento' | 'Otros';
   date: string;
   amount: number;
-  currency: 'GBP' | 'EUR';
+  currency: string;
   paidBy: string;
   paymentMethod: string;
   activityId?: string;
@@ -335,6 +344,7 @@ export interface Reminder {
   time: string;
   notes: string;
   done: boolean;
+  notifiedAt?: string;
 }
 
 export interface AppSettings {

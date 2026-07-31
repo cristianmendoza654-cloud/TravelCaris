@@ -1,6 +1,6 @@
 import { Check, FileUp, LoaderCircle, MapPin, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import { categories, type TripStatus } from '../domain/types';
+import { categories, currencyCodes, type TripStatus } from '../domain/types';
 import { parseTravelPdf, validatePdfImportDraft, type PdfImportDraft } from '../services/pdfImport';
 import type { AppSnapshot } from '../services/storage';
 import { applyPdfImport, createTrip, deleteTrip, saveTrip, selectTrip } from '../services/storage';
@@ -250,7 +250,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
 
 function NewTripForm({ onCreated }: { onCreated: (tripId: string) => Promise<void> }) {
   const today = new Date().toISOString().slice(0, 10);
-  const [form, setForm] = useState({ name: '', destination: '', country: '', startDate: today, endDate: today });
+  const [form, setForm] = useState({ name: '', destination: '', country: '', startDate: today, endDate: today, currency: 'EUR', secondaryCurrency: 'EUR' });
   const [error, setError] = useState('');
   return (
     <section className="form-card">
@@ -263,6 +263,10 @@ function NewTripForm({ onCreated }: { onCreated: (tripId: string) => Promise<voi
       <div className="two-cols">
         <label>Inicio<input type="date" value={form.startDate} onChange={(event) => setForm({ ...form, startDate: event.target.value })} /></label>
         <label>Fin<input type="date" value={form.endDate} min={form.startDate} onChange={(event) => setForm({ ...form, endDate: event.target.value })} /></label>
+      </div>
+      <div className="two-cols">
+        <label>Moneda del destino<select value={form.currency} onChange={(event) => setForm({ ...form, currency: event.target.value })}>{currencyCodes.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+        <label>Moneda del viajero<select value={form.secondaryCurrency} onChange={(event) => setForm({ ...form, secondaryCurrency: event.target.value })}>{currencyCodes.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
       </div>
       {error && <p className="error">{error}</p>}
       <button

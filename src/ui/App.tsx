@@ -17,6 +17,8 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import {
   BedDouble,
+  BellRing,
+  CalendarPlus,
   CalendarDays,
   Check,
   Clock3,
@@ -39,6 +41,7 @@ import {
   Navigation,
   Plane,
   Plus,
+  RefreshCw,
   RotateCcw,
   ShoppingBag,
   Share2,
@@ -63,14 +66,18 @@ import type {
   BackupData,
   Category,
   Expense,
+  Reminder,
   StoredImage,
+  Trip,
   TripDay,
 } from '../domain/types';
-import { categories, statuses, weekdays } from '../domain/types';
+import { categories, currencyCodes, statuses, weekdays } from '../domain/types';
 import { emptyPriceDetails, emptyWeeklyOpeningHours, isActivityStale } from '../domain/activity';
-import { expenseTotals } from '../services/calculations';
+import { convertTripCurrency, expenseTotals, formatMoney } from '../services/calculations';
+import { exchangeRateIsFresh, fetchLatestExchangeRate } from '../services/exchangeRates';
 import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
 import { findItineraryGaps } from '../services/planning';
+import { dueReminders, nextReminderDelay, reminderCalendarFile, reminderTimestamp } from '../services/reminders';
 import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from '../services/links';
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
 import { findAndStorePlaceImage } from '../services/placeImages';
@@ -98,6 +105,7 @@ import {
   reorderActivities,
   restoreInitialData,
   saveActivity,
+  saveTrip,
   validateBackup,
 } from '../services/storage';
 import type { AppSnapshot } from '../services/storage';
@@ -114,6 +122,7 @@ import { ExploreView } from './Explore';
 const today = new Date().toISOString().slice(0, 10);
 const worldCenter: [number, number] = [20, 0];
 const automaticPhotoAttempts = new Set<string>();
+const exchangeRateAttempts = new Set<string>();
 
 const markerIconComponents: Record<MapMarkerKind, LucideIcon> = {
   accommodation: BedDouble,
@@ -148,6 +157,8 @@ export function App() {
 
 function LoadedApp({ snapshot, refresh, notify, notice }: ViewProps & { notice: string }) {
   useAutomaticFlightRefresh({ snapshot, refresh, notify });
+  useExchangeRateRefresh(snapshot, refresh);
+  useReminderScheduler(snapshot.reminders, refresh, notify);
   const unreadAlerts = snapshot.flightAlerts.filter((alert) => !alert.read).length;
   return (
     <div className="app-shell">
@@ -173,6 +184,73 @@ function LoadedApp({ snapshot, refresh, notify, notice }: ViewProps & { notice: 
       {notice && <div className="toast">{notice}</div>}
     </div>
   );
+}
+
+function useExchangeRateRefresh(snapshot: AppSnapshot, refresh: () => Promise<void>) {
+  const trip = snapshot.activeTrip;
+  useEffect(() => {
+    const base = trip.currency.toUpperCase();
+    const quote = trip.secondaryCurrency.toUpperCase();
+    const attemptKey = `${trip.id}|${base}|${quote}|${trip.exchangeRateUpdatedAt ?? ''}`;
+    if (base === quote || !navigator.onLine || exchangeRateIsFresh(trip.exchangeRateUpdatedAt) || exchangeRateAttempts.has(attemptKey)) return;
+    exchangeRateAttempts.add(attemptKey);
+    let mounted = true;
+    void fetchLatestExchangeRate(base, quote)
+      .then(async (result) => {
+        await saveTrip({
+          ...trip,
+          currency: result.base,
+          secondaryCurrency: result.quote,
+          exchangeRate: result.rate,
+          exchangeRateDate: result.date,
+          exchangeRateUpdatedAt: result.fetchedAt,
+          exchangeRateSource: result.source,
+        });
+        if (mounted) await refresh();
+      })
+      .catch(() => undefined);
+    return () => { mounted = false; };
+  }, [refresh, trip]);
+}
+
+function useReminderScheduler(reminders: Reminder[], refresh: () => Promise<void>, notify: (message: string) => void) {
+  useEffect(() => {
+    let active = true;
+    let timeout = 0;
+    const check = async () => {
+      window.clearTimeout(timeout);
+      const due = dueReminders(reminders);
+      if (due.length) {
+        const notifiedAt = new Date().toISOString();
+        await Promise.all(due.map((reminder) => putReminder({ ...reminder, notifiedAt })));
+        if ('Notification' in window && Notification.permission === 'granted' && 'serviceWorker' in navigator) {
+          const registration = await navigator.serviceWorker.ready.catch(() => null);
+          if (registration) {
+            const first = due[0];
+            await registration.showNotification(first.title, {
+              body: due.length > 1 ? `${due.length} recordatorios pendientes` : first.notes || 'Recordatorio de TravelCaris',
+              icon: '/icons/icon-192.png',
+              tag: `travelcaris-reminder-${first.id}`,
+            }).catch(() => undefined);
+          }
+        }
+        if (active) {
+          notify(due.length > 1 ? `Tienes ${due.length} recordatorios pendientes` : `Recordatorio: ${due[0].title}`);
+          await refresh();
+        }
+        return;
+      }
+      timeout = window.setTimeout(() => void check(), nextReminderDelay(reminders));
+    };
+    const onVisible = () => { if (document.visibilityState === 'visible') void check(); };
+    void check();
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      active = false;
+      window.clearTimeout(timeout);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [notify, refresh, reminders]);
 }
 
 function Splash() {
@@ -223,6 +301,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
     0,
     Math.ceil((new Date(`${snapshot.activeTrip.startDate}T12:00:00`).getTime() - currentTime) / 86_400_000),
   );
+  const nextReminder = [...snapshot.reminders].filter((reminder) => !reminder.done).sort((left, right) => reminderTimestamp(left) - reminderTimestamp(right))[0];
   const emptyTrip = !snapshot.activities.length && !snapshot.accommodations.length && !snapshot.flights.length;
 
   return (
@@ -237,7 +316,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
         <NavLink to="/itinerario"><CalendarDays size={19} /> Itinerario</NavLink>
         <NavLink to="/mapa"><MapIcon size={19} /> Mapa</NavLink>
         <NavLink to="/vuelos"><Plane size={19} /> Vuelos</NavLink>
-        <NavLink to="/mas"><FileText size={19} /> Documentos</NavLink>
+        <NavLink to="/mas" onClick={() => sessionStorage.setItem('travelcaris-more-tab', 'Documentos')}><FileText size={19} /> Documentos</NavLink>
       </div>
       {emptyTrip && (
         <section className="empty-state">
@@ -247,6 +326,13 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
         </section>
       )}
       <AlertsInbox snapshot={snapshot} refresh={refresh} notify={notify} compact />
+      {nextReminder && (
+        <section className={`reminder-summary ${reminderTimestamp(nextReminder) <= currentTime ? 'overdue' : ''}`}>
+          <BellRing size={22} />
+          <div><p className="eyebrow">Próximo recordatorio</p><strong>{nextReminder.title}</strong><span>{formatReminderDate(nextReminder.date, nextReminder.time)}</span></div>
+          <NavLink to="/mas" onClick={() => sessionStorage.setItem('travelcaris-more-tab', 'Recordatorios')}>Ver</NavLink>
+        </section>
+      )}
       <section className="highlight-panel">
         <p className="eyebrow">Alojamiento activo</p>
         <h2>{accommodation?.name ?? 'Sin alojamiento asignado'}</h2>
@@ -276,7 +362,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
       )}
       <section className="timeline" aria-label="Resto del día">
         {dayActivities.map((activity) => (
-          <ActivityCard key={activity.id} activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} compact />
+          <ActivityCard key={activity.id} activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} compact />
         ))}
       </section>
       <section className="info-band">
@@ -326,7 +412,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
           <div className="timeline">
             {dayActivities.map((activity) => (
               <SortableActivity key={activity.id} activity={activity}>
-                <ActivityCard activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
+                <ActivityCard activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
               </SortableActivity>
             ))}
           </div>
@@ -357,7 +443,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
         {showAlternatives && (
           <div className="timeline alternatives-list">
             {alternatives.map((activity) => (
-              <ActivityCard key={activity.id} activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
+              <ActivityCard key={activity.id} activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
             ))}
           </div>
         )}
@@ -365,6 +451,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
       {(editing || showNew) && (
         <ActivityEditor
           activity={editing ?? undefined}
+          trip={snapshot.activeTrip}
           availableDays={availableDays}
           defaultDay={selectedDay}
           onClose={() => {
@@ -713,13 +800,17 @@ function createCurrentLocationIcon() {
 }
 
 function MoreView({ snapshot, refresh, notify }: ViewProps) {
-  const [tab, setTab] = useState('Viajes');
+  const [tab, setTab] = useState(() => sessionStorage.getItem('travelcaris-more-tab') ?? 'Viajes');
+  const selectTab = (nextTab: string) => {
+    sessionStorage.setItem('travelcaris-more-tab', nextTab);
+    setTab(nextTab);
+  };
   return (
     <section className="page-stack">
       <Hero title="Más" subtitle="Viajes, reservas, gastos, listas y ajustes" />
       <div className="tabs horizontal">
         {['Viajes', 'Alojamientos', 'Explorar', 'Transportes', 'Documentos', 'Gastos', 'Equipaje', 'Recordatorios', 'Vuelos', 'Instalar', 'Ajustes'].map((item) => (
-          <button key={item} className={tab === item ? 'selected' : ''} onClick={() => setTab(item)}>{item}</button>
+          <button key={item} className={tab === item ? 'selected' : ''} onClick={() => selectTab(item)}>{item}</button>
         ))}
       </div>
       {tab === 'Viajes' && <TripsPanel snapshot={snapshot} refresh={refresh} notify={notify} />}
@@ -755,8 +846,9 @@ function Hero({ title, subtitle, action }: { title: string; subtitle: string; ac
   );
 }
 
-function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleDays = 30, compact = false }: {
+function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, staleDays = 30, compact = false }: {
   activity: Activity;
+  trip: Trip;
   availableDays: string[];
   refresh: () => Promise<void>;
   notify: (message: string) => void;
@@ -820,7 +912,7 @@ function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleD
           <span>{activity.estimatedDurationMinutes} min</span>
           <span>{activity.reservationStatus}</span>
           {activity.priority === 'Premium' && <span>Premium</span>}
-          <span>{priceLabel(activity)}</span>
+          <span>{priceLabel(activity, trip)}</span>
           {stale && <span className="warning-chip">Verificar datos</span>}
         </div>
         {!compact && activity.openingHoursNote && <p className="detail-line"><strong>Horario:</strong> {activity.openingHoursNote}</p>}
@@ -851,8 +943,9 @@ function SortableActivity({ activity, children }: { activity: Activity; children
   );
 }
 
-function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved }: {
+function ActivityEditor({ activity, trip, availableDays, defaultDay, onClose, onSaved }: {
   activity?: Activity;
+  trip: Trip;
   availableDays: string[];
   defaultDay: TripDay;
   onClose: () => void;
@@ -867,9 +960,9 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
     category: 'Otros',
     status: 'Pendiente',
     planType: 'Principal',
-    currency: 'GBP',
+    currency: trip.currency,
     openingHours: emptyWeeklyOpeningHours(),
-    priceDetails: emptyPriceDetails('GBP'),
+    priceDetails: emptyPriceDetails(trip.currency),
     reservationStatus: 'No necesaria',
     verificationStatus: 'Pendiente de verificar',
     environment: 'Sin indicar',
@@ -878,7 +971,7 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
   const [photoLoading, setPhotoLoading] = useState(false);
   const set = <K extends keyof Activity>(key: K, value: Activity[K]) => setForm((current) => ({ ...current, [key]: value }));
   const setPrice = <K extends keyof Activity['priceDetails']>(key: K, value: Activity['priceDetails'][K]) =>
-    setForm((current) => ({ ...current, priceDetails: { ...emptyPriceDetails(current.currency ?? 'GBP'), ...(current.priceDetails ?? {}), [key]: value } }));
+    setForm((current) => ({ ...current, priceDetails: { ...emptyPriceDetails(current.currency ?? trip.currency), ...(current.priceDetails ?? {}), [key]: value } }));
   const searchPhoto = async () => {
     if (!form.title?.trim()) return setError('Escribe primero el nombre del lugar.');
     setPhotoLoading(true);
@@ -912,7 +1005,7 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
       adultPrice: form.priceDetails?.adult ?? 0,
       childPrice: form.priceDetails?.child ?? 0,
       estimatedTotalPrice: form.priceDetails?.totalEstimate ?? 0,
-      currency: form.priceDetails?.currency ?? form.currency ?? 'GBP',
+      currency: form.priceDetails?.currency ?? form.currency ?? trip.currency,
     };
     if (activity) await saveActivity({ ...activity, ...normalized });
     else await createActivity({ ...normalized, title: form.title, day: form.day as TripDay });
@@ -955,7 +1048,7 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
           <summary>Precio y reserva</summary>
           <div className="three-cols">
             <label>Tipo<select value={form.priceDetails?.kind ?? 'Desconocido'} onChange={(event) => setPrice('kind', event.target.value as Activity['priceDetails']['kind'])}><option>Gratis</option><option>Precio fijo</option><option>Desde</option><option>Aproximado</option><option>Donativo</option><option>Desconocido</option></select></label>
-            <label>Moneda<select value={form.priceDetails?.currency ?? 'GBP'} onChange={(event) => setPrice('currency', event.target.value as 'GBP' | 'EUR')}><option>GBP</option><option>EUR</option></select></label>
+            <label>Moneda<select value={form.priceDetails?.currency ?? trip.currency} onChange={(event) => setPrice('currency', event.target.value)}>{tripCurrencies(trip).map((currency) => <option key={currency}>{currency}</option>)}</select></label>
             <label>Unidad<select value={form.priceDetails?.unit ?? 'persona'} onChange={(event) => setPrice('unit', event.target.value as Activity['priceDetails']['unit'])}><option>persona</option><option>familia</option><option>actividad</option></select></label>
           </div>
           <div className="three-cols">
@@ -1233,25 +1326,34 @@ function DocumentsPanel({ snapshot, refresh, notify }: ViewProps) {
 }
 
 function ExpensesPanel({ snapshot, refresh, notify }: ViewProps) {
-  const totals = expenseTotals(snapshot.expenses, snapshot.settings.gbpToEur);
-  const [expense, setExpense] = useState<Expense>({ id: uuid(), tripId: snapshot.activeTrip.id, concept: '', category: 'Comida', date: today, amount: 0, currency: 'GBP', paidBy: '', paymentMethod: '', notes: '' });
+  const trip = snapshot.activeTrip;
+  const exchangeAvailable = trip.currency === trip.secondaryCurrency || Boolean(trip.exchangeRateUpdatedAt);
+  const rate = exchangeAvailable ? trip.exchangeRate : Number.NaN;
+  const totals = expenseTotals(snapshot.expenses, trip.currency, trip.secondaryCurrency, rate);
+  const [expense, setExpense] = useState<Expense>({ id: uuid(), tripId: trip.id, concept: '', category: 'Comida', date: today, amount: 0, currency: trip.currency, paidBy: '', paymentMethod: '', notes: '' });
   return (
     <div className="page-stack">
       <section className="stats-grid">
-        <div><span>Total GBP</span><strong>£{totals.totalGbp.toFixed(2)}</strong></div>
-        <div><span>Total EUR</span><strong>€{totals.totalEur.toFixed(2)}</strong></div>
-        <div><span>Presupuesto</span><strong>£{snapshot.settings.budgetGbp}</strong></div>
-        <div><span>Diferencia</span><strong>£{(snapshot.settings.budgetGbp - totals.totalGbp).toFixed(2)}</strong></div>
+        <div><span>Total · destino</span><strong>{formatMoney(totals.totalDestination, trip.currency)}</strong></div>
+        <div><span>Total · viajero</span><strong>{exchangeAvailable ? formatMoney(totals.totalTraveller, trip.secondaryCurrency) : 'Sin cambio'}</strong></div>
+        <div><span>Presupuesto</span><strong>{formatMoney(snapshot.settings.budgetGbp, trip.currency)}</strong></div>
+        <div><span>Diferencia</span><strong>{formatMoney(snapshot.settings.budgetGbp - totals.totalDestination, trip.currency)}</strong></div>
       </section>
+      {trip.exchangeRateUpdatedAt && trip.currency !== trip.secondaryCurrency && <div className="exchange-status">1 {trip.currency} = {trip.exchangeRate.toFixed(4)} {trip.secondaryCurrency}<span>Referencia {trip.exchangeRateDate} · {trip.exchangeRateSource}</span></div>}
+      {!!totals.unconvertedCount && <div className="info-band">Hay {totals.unconvertedCount} gastos en una moneda distinta del par configurado. Conservan su importe original.</div>}
       <div className="form-card">
         <label>Concepto<input value={expense.concept} onChange={(event) => setExpense({ ...expense, concept: event.target.value })} /></label>
         <div className="two-cols">
           <label>Importe<input type="number" min="0" value={expense.amount} onChange={(event) => setExpense({ ...expense, amount: Number(event.target.value) })} /></label>
-          <label>Moneda<select value={expense.currency} onChange={(event) => setExpense({ ...expense, currency: event.target.value as 'GBP' | 'EUR' })}><option>GBP</option><option>EUR</option></select></label>
+          <label>Moneda<select value={expense.currency} onChange={(event) => setExpense({ ...expense, currency: event.target.value })}>{tripCurrencies(trip).map((currency) => <option key={currency}>{currency}</option>)}</select></label>
         </div>
-        <button className="primary" onClick={async () => { if (!expense.concept || expense.amount <= 0) return notify('Concepto e importe son obligatorios'); await putExpense({ ...expense, id: uuid() }); await refresh(); notify('Gasto guardado'); }}><Euro size={18} /> Añadir gasto</button>
+        <button className="primary" onClick={async () => { if (!expense.concept || expense.amount <= 0) return notify('Concepto e importe son obligatorios'); await putExpense({ ...expense, id: uuid() }); setExpense({ ...expense, id: uuid(), concept: '', amount: 0 }); await refresh(); notify('Gasto guardado'); }}><Euro size={18} /> Añadir gasto</button>
       </div>
-      {snapshot.expenses.map((item) => <article className="activity-card" key={item.id}><Euro size={22} /><div className="activity-main"><h3>{item.concept}</h3><p>{item.amount} {item.currency} · {item.category}</p><div className="icon-actions"><button aria-label={`Eliminar gasto ${item.concept}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el gasto “${item.concept}”?`)) { await deleteExpense(item.id); await refresh(); notify('Gasto eliminado'); } }}><Trash2 size={18} /></button></div></div></article>)}
+      {snapshot.expenses.map((item) => {
+        const target = item.currency === trip.currency ? trip.secondaryCurrency : trip.currency;
+        const converted = exchangeAvailable ? convertTripCurrency(item.amount, item.currency, target, trip.currency, trip.secondaryCurrency, trip.exchangeRate) : null;
+        return <article className="activity-card" key={item.id}><Euro size={22} /><div className="activity-main"><h3>{item.concept}</h3><p>{formatMoney(item.amount, item.currency)}{converted === null || target === item.currency ? '' : ` · ≈ ${formatMoney(converted, target)}`} · {item.category}</p><div className="icon-actions"><button aria-label={`Eliminar gasto ${item.concept}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el gasto “${item.concept}”?`)) { await deleteExpense(item.id); await refresh(); notify('Gasto eliminado'); } }}><Trash2 size={18} /></button></div></div></article>;
+      })}
     </div>
   );
 }
@@ -1277,21 +1379,65 @@ function PackingPanel({ snapshot, refresh, notify }: ViewProps) {
 }
 
 function RemindersPanel({ snapshot, refresh, notify }: ViewProps) {
-  const [title, setTitle] = useState('');
+  const [draft, setDraft] = useState({ title: '', date: today, time: '09:00', notes: '' });
   const requestNotifications = async () => {
     if (!('Notification' in window)) return notify('Las notificaciones no están disponibles en este navegador');
     const result = await Notification.requestPermission();
     notify(result === 'granted' ? 'Permiso de notificaciones concedido' : 'La app seguirá funcionando sin notificaciones');
   };
+  const sorted = [...snapshot.reminders].sort((left, right) => reminderTimestamp(left) - reminderTimestamp(right));
   return (
     <div className="page-stack">
-      <button className="secondary" onClick={requestNotifications}>Activar notificaciones</button>
+      <div className="button-row"><button className="secondary" onClick={requestNotifications}><BellRing size={18} /> Activar notificaciones</button></div>
+      <div className="info-band">TravelCaris avisa al abrir o mientras la PWA está activa. Añádelo también al calendario para recibir el aviso nativo con la aplicación cerrada.</div>
       <div className="form-card">
-        <label>Recordatorio<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-        <button className="primary" onClick={async () => { if (!title) return; await putReminder({ id: uuid(), tripId: snapshot.activeTrip.id, title, date: today, time: '09:00', notes: '', done: false }); setTitle(''); await refresh(); }}>Añadir</button>
+        <label>Recordatorio<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <div className="two-cols">
+          <label>Fecha<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value })} /></label>
+          <label>Hora<input type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value })} /></label>
+        </div>
+        <label>Notas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
+        <button className="primary" onClick={async () => {
+          if (!draft.title.trim() || !draft.date || !draft.time) return notify('Título, fecha y hora son obligatorios');
+          await putReminder({ id: uuid(), tripId: snapshot.activeTrip.id, ...draft, title: draft.title.trim(), done: false });
+          setDraft({ title: '', date: draft.date, time: draft.time, notes: '' });
+          await refresh();
+          notify('Recordatorio programado');
+        }}><CalendarPlus size={18} /> Programar recordatorio</button>
       </div>
-      {snapshot.reminders.map((item) => <div className="check-row" key={item.id}><input aria-label={`Marcar ${item.title}`} type="checkbox" checked={item.done} onChange={async (event) => { await putReminder({ ...item, done: event.target.checked }); await refresh(); }} /><span>{item.title}</span><small>{item.date} {item.time}</small><button aria-label={`Eliminar recordatorio ${item.title}`} title="Eliminar" onClick={async () => { await deleteReminder(item.id); await refresh(); notify('Recordatorio eliminado'); }}><Trash2 size={17} /></button></div>)}
+      {!sorted.length && <div className="info-band">No hay recordatorios programados para este viaje.</div>}
+      {sorted.map((item) => <EditableReminder key={item.id} reminder={item} refresh={refresh} notify={notify} />)}
     </div>
+  );
+}
+
+function EditableReminder({ reminder, refresh, notify }: { reminder: Reminder; refresh: () => Promise<void>; notify: (message: string) => void }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(reminder);
+  const overdue = !reminder.done && Boolean(reminder.notifiedAt);
+  if (editing) {
+    return (
+      <article className="form-card reminder-editor">
+        <label>Título<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} /></label>
+        <div className="two-cols">
+          <label>Fecha<input type="date" value={draft.date} onChange={(event) => setDraft({ ...draft, date: event.target.value, notifiedAt: undefined })} /></label>
+          <label>Hora<input type="time" value={draft.time} onChange={(event) => setDraft({ ...draft, time: event.target.value, notifiedAt: undefined })} /></label>
+        </div>
+        <label>Notas<textarea value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} /></label>
+        <div className="button-row end"><button onClick={() => setEditing(false)}>Cancelar</button><button className="primary" onClick={async () => { if (!draft.title.trim() || !draft.date || !draft.time) return notify('Completa título, fecha y hora'); await putReminder({ ...draft, title: draft.title.trim() }); await refresh(); setEditing(false); notify('Recordatorio actualizado'); }}>Guardar</button></div>
+      </article>
+    );
+  }
+  return (
+    <article className={`reminder-row ${reminder.done ? 'done' : ''} ${overdue ? 'overdue' : ''}`}>
+      <input aria-label={`Marcar ${reminder.title}`} type="checkbox" checked={reminder.done} onChange={async (event) => { await putReminder({ ...reminder, done: event.target.checked }); await refresh(); }} />
+      <div><strong>{reminder.title}</strong><time dateTime={`${reminder.date}T${reminder.time}`}>{formatReminderDate(reminder.date, reminder.time)}</time>{reminder.notes && <p>{reminder.notes}</p>}</div>
+      <div className="icon-actions">
+        <button aria-label={`Editar recordatorio ${reminder.title}`} title="Editar" onClick={() => { setDraft(reminder); setEditing(true); }}><Edit3 size={17} /></button>
+        <button aria-label={`Añadir ${reminder.title} al calendario`} title="Añadir al calendario" onClick={() => downloadText(`recordatorio-${slugify(reminder.title)}.ics`, reminderCalendarFile(reminder), 'text/calendar;charset=utf-8')}><CalendarPlus size={17} /></button>
+        <button aria-label={`Eliminar recordatorio ${reminder.title}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el recordatorio “${reminder.title}”?`)) { await deleteReminder(reminder.id); await refresh(); notify('Recordatorio eliminado'); } }}><Trash2 size={17} /></button>
+      </div>
+    </article>
   );
 }
 
@@ -1312,7 +1458,39 @@ function InstallPanel() {
 
 function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
   const [preview, setPreview] = useState<BackupData | null>(null);
+  const [rateLoading, setRateLoading] = useState(false);
   const backupPrefix = `travelcaris-${slugify(snapshot.activeTrip.name)}`;
+  const trip = snapshot.activeTrip;
+  const availableCurrencies = [...new Set([...currencyCodes, trip.currency, trip.secondaryCurrency])];
+  const updateTripCurrency = async (key: 'currency' | 'secondaryCurrency', value: string) => {
+    const updated = { ...trip, [key]: value, exchangeRate: 1, exchangeRateDate: undefined, exchangeRateUpdatedAt: undefined, exchangeRateSource: undefined };
+    setRateLoading(true);
+    await saveTrip(updated);
+    try {
+      if (updated.currency !== updated.secondaryCurrency) {
+        const result = await fetchLatestExchangeRate(updated.currency, updated.secondaryCurrency);
+        await saveTrip({ ...updated, exchangeRate: result.rate, exchangeRateDate: result.date, exchangeRateUpdatedAt: result.fetchedAt, exchangeRateSource: result.source });
+      }
+    } catch {
+      notify('Monedas guardadas; se actualizará el cambio cuando haya conexión');
+    } finally {
+      await refresh();
+      setRateLoading(false);
+    }
+  };
+  const refreshExchangeRate = async () => {
+    setRateLoading(true);
+    try {
+      const result = await fetchLatestExchangeRate(trip.currency, trip.secondaryCurrency);
+      await saveTrip({ ...trip, exchangeRate: result.rate, exchangeRateDate: result.date, exchangeRateUpdatedAt: result.fetchedAt, exchangeRateSource: result.source });
+      await refresh();
+      notify('Cambio actualizado');
+    } catch {
+      notify('No se pudo actualizar; se conserva el último cambio guardado');
+    } finally {
+      setRateLoading(false);
+    }
+  };
   const exportJson = async () => {
     const data = await exportBackup();
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -1323,8 +1501,15 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
   return (
     <div className="page-stack">
       <div className="form-card">
-        <label>Presupuesto GBP<input type="number" value={snapshot.settings.budgetGbp} onChange={async (event) => { await putSettings({ ...snapshot.settings, budgetGbp: Number(event.target.value) }); await refresh(); }} /></label>
-        <label>Cambio GBP a EUR<input type="number" step="0.01" value={snapshot.settings.gbpToEur} onChange={async (event) => { await putSettings({ ...snapshot.settings, gbpToEur: Number(event.target.value) }); await refresh(); }} /></label>
+        <div className="two-cols">
+          <label>Moneda del destino<select value={trip.currency} onChange={(event) => updateTripCurrency('currency', event.target.value)}>{availableCurrencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+          <label>Moneda del viajero<select value={trip.secondaryCurrency} onChange={(event) => updateTripCurrency('secondaryCurrency', event.target.value)}>{availableCurrencies.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+        </div>
+        <div className="exchange-panel">
+          <div><strong>{trip.currency === trip.secondaryCurrency ? 'No hace falta conversión' : `1 ${trip.currency} = ${trip.exchangeRateUpdatedAt ? trip.exchangeRate.toFixed(4) : '—'} ${trip.secondaryCurrency}`}</strong><span>{trip.exchangeRateUpdatedAt ? `Referencia ${trip.exchangeRateDate} · ${trip.exchangeRateSource}` : 'Pendiente de obtener el último cambio publicado'}</span></div>
+          <button type="button" onClick={refreshExchangeRate} disabled={rateLoading}>{rateLoading ? <LoaderCircle className="spinning" size={18} /> : <RefreshCw size={18} />} Actualizar</button>
+        </div>
+        <label>Presupuesto ({trip.currency})<input type="number" min="0" value={snapshot.settings.budgetGbp} onChange={async (event) => { await putSettings({ ...snapshot.settings, budgetGbp: Number(event.target.value) }); await refresh(); }} /></label>
         <label>Avisar si no se verifica en (días)<input type="number" min="1" max="365" value={snapshot.settings.placeInfoStaleDays} onChange={async (event) => { await putSettings({ ...snapshot.settings, placeInfoStaleDays: Number(event.target.value) || 30 }); await refresh(); }} /></label>
         <div className="grid-actions">
           <button onClick={exportJson}><Download size={18} /> Exportar JSON</button>
@@ -1357,7 +1542,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.4.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.5.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
@@ -1421,6 +1606,11 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${value}T12:00:00`));
 }
 
+function formatReminderDate(date: string, time: string) {
+  return new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })
+    .format(new Date(`${date}T${time}:00`));
+}
+
 function formatDayTab(value: string) {
   return new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
     .format(new Date(`${value}T12:00:00`))
@@ -1434,13 +1624,22 @@ function recommendedDeparture(time: string) {
   return date.toTimeString().slice(0, 5);
 }
 
-function priceLabel(activity: Activity) {
+function priceLabel(activity: Activity, trip: Trip) {
   const price = activity.priceDetails;
   if (price.kind === 'Gratis') return 'Gratis';
   if (price.kind === 'Desconocido') return 'Precio por verificar';
   const amount = price.totalEstimate || price.family || price.adult || activity.estimatedTotalPrice;
   const prefix = price.kind === 'Desde' ? 'Desde ' : price.kind === 'Aproximado' ? 'Aprox. ' : price.kind === 'Donativo' ? 'Donativo ' : '';
-  return amount ? `${prefix}${amount} ${price.currency}` : price.kind;
+  if (!amount) return price.kind;
+  const targetCurrency = price.currency === trip.currency ? trip.secondaryCurrency : trip.currency;
+  const converted = trip.exchangeRateUpdatedAt
+    ? convertTripCurrency(amount, price.currency, targetCurrency, trip.currency, trip.secondaryCurrency, trip.exchangeRate)
+    : null;
+  return `${prefix}${formatMoney(amount, price.currency)}${converted === null || targetCurrency === price.currency ? '' : ` · ≈ ${formatMoney(converted, targetCurrency)}`}`;
+}
+
+function tripCurrencies(trip: Trip) {
+  return [...new Set([trip.currency, trip.secondaryCurrency])];
 }
 
 function isUrl(value: string) {
@@ -1456,8 +1655,8 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function downloadText(filename: string, text: string) {
-  downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
+function downloadText(filename: string, text: string, type = 'text/plain;charset=utf-8') {
+  downloadBlob(new Blob([text], { type }), filename);
 }
 
 function expensesCsv(expenses: Expense[]) {

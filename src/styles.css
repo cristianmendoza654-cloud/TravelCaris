@@ -94,6 +94,25 @@ textarea { min-height: 86px; resize: vertical; }
 .stats-grid div { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 14px; }
 .stats-grid span { display: block; color: var(--muted); font-size: 0.84rem; }
 .stats-grid strong { display: block; font-size: 1.35rem; margin-top: 4px; }
+.exchange-panel, .exchange-status { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 13px 14px; border: 1px solid var(--line); border-left: 4px solid var(--brand); border-radius: 8px; background: var(--surface-alt); }
+.exchange-panel > div, .exchange-status { min-width: 0; }
+.exchange-panel span, .exchange-status span { display: block; margin-top: 3px; color: var(--muted); font-size: 0.76rem; }
+.exchange-status { display: grid; justify-content: start; font-weight: 850; }
+.reminder-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px; border: 1px solid var(--line); border-left: 5px solid var(--brand); border-radius: 8px; background: var(--surface); }
+.reminder-row > input { width: 22px; min-height: 22px; }
+.reminder-row > div { min-width: 0; }
+.reminder-row strong, .reminder-row time { display: block; }
+.reminder-row time { margin-top: 4px; color: var(--muted); font-size: 0.8rem; font-weight: 750; }
+.reminder-row p { margin: 6px 0 0; color: var(--muted); overflow-wrap: anywhere; }
+.reminder-row.overdue { border-left-color: #bd7b13; }
+.reminder-row.done { opacity: 0.65; border-left-color: var(--green); }
+.reminder-editor { border-left: 5px solid var(--brand); }
+.reminder-summary { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-left: 5px solid var(--brand); border-radius: 8px; background: var(--surface); }
+.reminder-summary.overdue { border-left-color: #bd7b13; }
+.reminder-summary p { margin: 0 0 3px; }
+.reminder-summary strong, .reminder-summary span { display: block; }
+.reminder-summary span { margin-top: 3px; color: var(--muted); font-size: 0.8rem; }
+.reminder-summary a { color: var(--brand); font-weight: 850; }
 .map-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: end; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .map-filters { display: grid; grid-template-columns: repeat(2, minmax(180px, 1fr)); }
 .map-filters label { min-width: 0; color: var(--muted); font-size: 0.78rem; }
@@ -108,9 +127,9 @@ textarea { min-height: 86px; resize: vertical; }
 .map-placement-panel label { color: var(--muted); font-size: 0.78rem; }
 .map-placement-panel select { color: var(--ink); font-size: 0.9rem; font-weight: 750; }
 .map-placement-panel p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
-.map-wrap { min-height: 500px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #dce8e5; }
+.map-wrap { position: relative; z-index: 0; isolation: isolate; min-height: 500px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #dce8e5; }
 .map-wrap.is-placing .leaflet-container { cursor: crosshair; }
-.leaflet-map { height: 500px; width: 100%; }
+.leaflet-map { z-index: 0; height: 500px; width: 100%; }
 .travel-map-marker-host { border: 0; background: transparent; }
 .travel-map-marker { position: relative; width: 36px; height: 36px; display: grid; place-items: center; border: 3px solid #fff; border-radius: 50% 50% 50% 10px; color: #fff; box-shadow: 0 4px 12px rgba(23, 50, 56, 0.34); transform: rotate(-45deg); }
 .travel-map-marker svg { position: relative; z-index: 1; transform: rotate(45deg); }
@@ -335,6 +354,10 @@ textarea { min-height: 86px; resize: vertical; }
   .conflict-row { grid-template-columns: 1fr; }
   .search-composer, .explore-lists { grid-template-columns: 1fr; }
   .quick-search-grid, .provider-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .exchange-panel { align-items: stretch; flex-direction: column; }
+  .exchange-panel button { align-self: flex-start; }
+  .reminder-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
+  .reminder-row .icon-actions { grid-column: 2; }
   .three-cols { grid-template-columns: 1fr; }
   .hours-row { grid-template-columns: 1fr 1fr; }
   .hours-row strong, .hours-row .interval-list, .hours-row > input { grid-column: 1 / -1; }

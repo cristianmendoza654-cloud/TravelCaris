@@ -9,7 +9,7 @@ export function emptyWeeklyOpeningHours(): WeeklyOpeningHours {
   return Object.fromEntries(weekdays.map((day) => [day, emptyDayOpeningHours()])) as WeeklyOpeningHours;
 }
 
-export function emptyPriceDetails(currency: 'GBP' | 'EUR' = 'GBP'): PriceDetails {
+export function emptyPriceDetails(currency = 'GBP'): PriceDetails {
   return {
     kind: 'Desconocido',
     adult: 0,

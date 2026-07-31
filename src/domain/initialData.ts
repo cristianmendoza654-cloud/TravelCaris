@@ -27,7 +27,7 @@ export const initialTrips: Trip[] = [
     coverImage: '',
     description: '',
     currency: 'EUR',
-    secondaryCurrency: 'GBP',
+    secondaryCurrency: 'EUR',
     exchangeRate: 1,
     travellers: [],
     status: 'Próximo',

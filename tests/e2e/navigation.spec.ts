@@ -10,6 +10,51 @@ test('navegación móvil básica', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Vuelos' })).toBeVisible();
   await navigation.getByRole('link', { name: /Mapa/i }).click();
   await expect(page.getByTestId('trip-map')).toBeVisible();
+  const stacking = await page.evaluate(() => ({
+    isolation: getComputedStyle(document.querySelector('.map-wrap')!).isolation,
+    mapZIndex: getComputedStyle(document.querySelector('.map-wrap')!).zIndex,
+    navigationZIndex: getComputedStyle(document.querySelector('.bottom-nav')!).zIndex,
+  }));
+  expect(stacking).toEqual({ isolation: 'isolate', mapZIndex: '0', navigationZIndex: '30' });
+});
+
+test('convierte gastos entre la moneda del destino y la del viajero', async ({ page }) => {
+  let rateRequests = 0;
+  await page.route('**/v2/rate/GBP/EUR', (route) => {
+    rateRequests += 1;
+    return route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ date: '2026-07-31', base: 'GBP', quote: 'EUR', rate: 1.18 }),
+    });
+  });
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  await page.getByLabel('Moneda del destino').selectOption('GBP');
+  await expect.poll(() => rateRequests).toBeGreaterThan(0);
+  await expect(page.getByText('1 GBP = 1.1800 EUR')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Gastos', exact: true }).click();
+  await page.getByLabel('Concepto').fill('Metro');
+  await page.getByLabel('Importe').fill('10');
+  await page.getByRole('button', { name: 'Añadir gasto' }).click();
+  await expect(page.locator('.activity-card').filter({ hasText: 'Metro' })).toContainText('11,80');
+});
+
+test('programa, edita y exporta un recordatorio fechado', async ({ page }) => {
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Recordatorios', exact: true }).click();
+  await page.getByLabel('Recordatorio').fill('Reservar entradas');
+  await page.getByLabel('Fecha', { exact: true }).fill('2027-09-02');
+  await page.getByLabel('Hora', { exact: true }).fill('18:45');
+  await page.getByLabel('Notas', { exact: true }).fill('Revisar la web oficial');
+  await page.getByRole('button', { name: 'Programar recordatorio' }).click();
+  await expect(page.getByText('Reservar entradas', { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Editar recordatorio Reservar entradas' })).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Añadir Reservar entradas al calendario' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('recordatorio-reservar-entradas.ics');
 });
 
 test('abre la importación privada de PDF', async ({ page }) => {
@@ -92,7 +137,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.4.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.5.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

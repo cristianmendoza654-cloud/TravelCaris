@@ -389,7 +389,7 @@ export async function saveTrip(trip: Trip) {
   await db.trips.put({ ...trip, updatedAt: new Date().toISOString() });
 }
 
-export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate'>) {
+export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate'> & Partial<Pick<Trip, 'currency' | 'secondaryCurrency'>>) {
   await ensureInitialData();
   const now = new Date().toISOString();
   const trip: Trip = {
@@ -397,8 +397,8 @@ export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'cou
     id: uuid(),
     coverImage: '',
     description: '',
-    currency: 'EUR',
-    secondaryCurrency: 'GBP',
+    currency: input.currency ?? 'EUR',
+    secondaryCurrency: input.secondaryCurrency ?? 'EUR',
     exchangeRate: 1,
     travellers: [],
     status: 'Próximo',
@@ -458,11 +458,17 @@ export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'ne
   await ensureInitialData();
   const currentId = await activeTripId();
   const currentTrip = await db.trips.get(currentId);
+  const detectedCurrency = mostCommonImportedCurrency(data);
   const importedTrip = mode === 'new'
-    ? await createTrip(data.trip)
+    ? await createTrip({ ...data.trip, currency: detectedCurrency ?? 'EUR', secondaryCurrency: 'EUR' })
     : {
         ...(currentTrip ?? initialTrips[0]),
         ...data.trip,
+        currency: detectedCurrency ?? currentTrip?.currency ?? initialTrips[0].currency,
+        exchangeRate: detectedCurrency && detectedCurrency !== currentTrip?.currency ? 1 : currentTrip?.exchangeRate ?? 1,
+        exchangeRateDate: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateDate,
+        exchangeRateUpdatedAt: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateUpdatedAt,
+        exchangeRateSource: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateSource,
         id: currentId,
         updatedAt: new Date().toISOString(),
       };
@@ -502,6 +508,16 @@ export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'ne
   for (const flight of data.flights) await createFlight({ ...flight, tripId });
   await selectTrip(tripId);
   return tripId;
+}
+
+function mostCommonImportedCurrency(data: PdfImportDraft) {
+  const counts = data.activities.reduce<Record<string, number>>((result, activity) => {
+    const price = activity.priceDetails;
+    const hasPrice = price && price.kind !== 'Desconocido' && [price.adult, price.child, price.family, price.totalEstimate].some((value) => value > 0);
+    if (hasPrice) result[price.currency] = (result[price.currency] ?? 0) + 1;
+    return result;
+  }, {});
+  return Object.entries(counts).sort((left, right) => right[1] - left[1])[0]?.[0];
 }
 
 export async function saveFlight(flight: Flight) {
@@ -783,7 +799,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.4.0',
+    version: '3.5.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,
