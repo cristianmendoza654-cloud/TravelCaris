@@ -1,6 +1,6 @@
 {
   "name": "travelcaris",
-  "version": "3.2.0",
+  "version": "3.2.1",
   "description": "Organizador familiar de viajes, itinerarios, vuelos, mapas, reservas y gastos",
   "private": true,
   "type": "module",

@@ -683,7 +683,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.2.0',
+    version: '3.2.1',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

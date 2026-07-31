@@ -80,33 +80,51 @@ const airportOfficialUrls: Record<string, string> = {
 };
 
 export async function extractPdfPages(file: File): Promise<string[]> {
-  if (file.type && file.type !== 'application/pdf') throw new Error('Selecciona un archivo PDF.');
+  if (!file.size) throw new Error('El archivo está vacío o todavía no se ha descargado desde iCloud. Descárgalo en Archivos y vuelve a seleccionarlo.');
   if (file.size > 20 * 1024 * 1024) throw new Error('El PDF supera el límite de 20 MB.');
 
+  const data = new Uint8Array(await file.arrayBuffer());
+  const signature = new TextDecoder('ascii').decode(data.slice(0, 1024));
+  if (!signature.includes('%PDF-')) throw new Error('El archivo seleccionado no contiene un PDF válido.');
+
   const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
-    import('pdfjs-dist'),
-    import('pdfjs-dist/build/pdf.worker.min.mjs?url'),
+    import('pdfjs-dist/legacy/build/pdf.mjs'),
+    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
   ]);
   GlobalWorkerOptions.workerSrc = workerModule.default;
-  const loadingTask = getDocument({ data: new Uint8Array(await file.arrayBuffer()) });
-  const document = await loadingTask.promise;
-  const pages: string[] = [];
+  const loadingTask = getDocument({ data });
+  try {
+    const document = await loadingTask.promise;
+    const pages: string[] = [];
 
-  for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
-    const page = await document.getPage(pageNumber);
-    const content = await page.getTextContent();
-    pages.push(
-      content.items
-        .filter((item): item is typeof item & { str: string } => 'str' in item)
-        .map((item) => item.str.trim())
-        .filter(Boolean)
-        .join('\n'),
-    );
-    page.cleanup();
+    for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
+      const page = await document.getPage(pageNumber);
+      const content = await page.getTextContent();
+      pages.push(
+        content.items
+          .filter((item): item is typeof item & { str: string } => 'str' in item)
+          .map((item) => item.str.trim())
+          .filter(Boolean)
+          .join('\n'),
+      );
+      page.cleanup();
+    }
+
+    return pages;
+  } catch (reason) {
+    const message = reason instanceof Error ? reason.message : '';
+    if (/password/i.test(message)) throw pdfReadError('El PDF está protegido con contraseña. Guarda una copia sin contraseña e inténtalo de nuevo.', reason);
+    if (/invalid|malformed|corrupt/i.test(message)) throw pdfReadError('El PDF está dañado o utiliza un formato no compatible. Prueba a imprimirlo o exportarlo de nuevo como PDF.', reason);
+    throw pdfReadError('Safari no pudo analizar este PDF. Descárgalo primero en Archivos y prueba con una copia guardada localmente.', reason);
+  } finally {
+    await loadingTask.destroy();
   }
+}
 
-  await loadingTask.destroy();
-  return pages;
+function pdfReadError(message: string, cause: unknown) {
+  const error = new Error(message) as Error & { cause?: unknown };
+  error.cause = cause;
+  return error;
 }
 
 export async function parseTravelPdf(file: File): Promise<PdfImportDraft> {

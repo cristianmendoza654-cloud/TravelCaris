@@ -1225,7 +1225,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities.length} actividades, {preview.expenses.length} gastos.</p><button className="primary" onClick={async () => { try { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); } catch { notify('No se pudo importar la copia'); } }}>Sustituir datos</button><button className="secondary" onClick={async () => { try { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); } catch { notify('No se pudo combinar la copia'); } }}>Combinar</button></div>}
       <div className="danger-zone">
         <button onClick={async () => { if (confirm('¿Vaciar todos los datos locales y volver al inicio?')) { await restoreInitialData(); await refresh(); notify('Datos locales vaciados'); } }}>Vaciar datos locales</button>
-        <p>TravelCaris 3.2. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.2.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
