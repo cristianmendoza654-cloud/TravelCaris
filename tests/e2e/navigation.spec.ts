@@ -70,6 +70,40 @@ test('prepara con IA un encargo compatible con la importación PDF', async ({ pa
   await expect(page.getByRole('heading', { name: 'Rellenar desde un PDF' })).toBeVisible();
 });
 
+test('elimina alojamientos y permite restablecer la aplicación', async ({ page }) => {
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
+  await page.getByRole('button', { name: 'Añadir alojamiento' }).click();
+  await expect(page.getByRole('heading', { name: 'Nuevo alojamiento' })).toBeVisible();
+
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Eliminar', exact: true }).click();
+  await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
+
+  await page.getByRole('button', { name: 'Añadir alojamiento' }).click();
+  await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
+  page.once('dialog', (dialog) => dialog.accept());
+  await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
+  await expect(page.getByText('TravelCaris 3.3.0')).toBeVisible();
+  await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
+  await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
+});
+
+test('crea y elimina un viaje completo desde Mis viajes', async ({ page }) => {
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Nuevo', exact: true }).click();
+  await page.getByLabel('Nombre', { exact: true }).fill('Viaje que se puede eliminar');
+  await page.getByLabel('Destino', { exact: true }).fill('Roma');
+  await page.getByLabel('País', { exact: true }).fill('Italia');
+  await page.getByRole('button', { name: 'Crear y abrir' }).click();
+
+  const trip = page.locator('.trip-card').filter({ hasText: 'Viaje que se puede eliminar' });
+  await expect(trip).toBeVisible();
+  page.once('dialog', (dialog) => dialog.accept());
+  await trip.getByRole('button', { name: 'Eliminar viaje' }).click();
+  await expect(trip).toHaveCount(0);
+});
+
 function travelCarisPdfFixture() {
   const lines = [
     'TRAVELCARIS-AI-PDF-V1',

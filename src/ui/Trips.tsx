@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { categories, type TripStatus } from '../domain/types';
 import { parseTravelPdf, validatePdfImportDraft, type PdfImportDraft } from '../services/pdfImport';
 import type { AppSnapshot } from '../services/storage';
-import { applyPdfImport, createTrip, saveTrip, selectTrip } from '../services/storage';
+import { applyPdfImport, createTrip, deleteTrip, saveTrip, selectTrip } from '../services/storage';
 import { AiItineraryPanel } from './AiItinerary';
 
 interface TripsProps {
@@ -52,19 +52,32 @@ export function TripsPanel({ snapshot, refresh, notify }: TripsProps) {
                 {['Próximo', 'En curso', 'Finalizado', 'Archivado'].map((status) => <option key={status}>{status}</option>)}
               </select>
             </label>
-            {trip.id === snapshot.activeTrip.id ? (
-              <span className="selected-trip"><Check size={17} /> Viaje actual</span>
-            ) : (
+            <div className="button-row">
+              {trip.id === snapshot.activeTrip.id ? (
+                <span className="selected-trip"><Check size={17} /> Viaje actual</span>
+              ) : (
+                <button
+                  onClick={async () => {
+                    await selectTrip(trip.id);
+                    await refresh();
+                    notify(`${trip.name} seleccionado`);
+                  }}
+                >
+                  Abrir viaje
+                </button>
+              )}
               <button
+                className="danger-button"
                 onClick={async () => {
-                  await selectTrip(trip.id);
+                  if (!confirm(`Se eliminarán “${trip.name}” y todos sus datos locales. ¿Continuar?`)) return;
+                  await deleteTrip(trip.id);
                   await refresh();
-                  notify(`${trip.name} seleccionado`);
+                  notify('Viaje eliminado');
                 }}
               >
-                Abrir viaje
+                <Trash2 size={17} /> Eliminar viaje
               </button>
-            )}
+            </div>
           </article>
         ))}
       </div>

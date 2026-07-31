@@ -1,21 +1,33 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyPdfImport,
+  createFlight,
+  createTrip,
   createActivity,
+  deleteAccommodation,
   deleteActivity,
+  deleteDocument,
+  deleteExpense,
+  deleteFlight,
+  deletePackingItem,
+  deleteReminder,
+  deleteTrip,
   exportBackup,
   getSnapshot,
   importBackup,
   moveActivity,
+  putAccommodation,
   putDocument,
   putExpense,
   putPackingItem,
+  putReminder,
   recordSearch,
   reorderActivities,
   restoreInitialData,
   savePlace,
   saveSearchProvider,
   saveActivity,
+  selectTrip,
   validateBackup,
 } from './storage';
 import { parseTravelDocumentText } from './pdfImport';
@@ -37,6 +49,37 @@ describe('storage repository', () => {
     await deleteActivity(created.id);
     snapshot = await getSnapshot();
     expect(snapshot.activities.find((activity) => activity.id === created.id)).toBeUndefined();
+  });
+
+  it('elimina elementos individuales y borra un viaje completo en cascada', async () => {
+    await restoreInitialData();
+    const trip = await createTrip({ name: 'Viaje temporal', destination: 'Roma', country: 'Italia', startDate: '2027-09-01', endDate: '2027-09-03' });
+    await selectTrip(trip.id);
+    const now = new Date().toISOString();
+    await putAccommodation({ id: 'accommodation-delete', tripId: trip.id, name: 'Hotel temporal', address: '', phone: '', checkIn: '', checkOut: '', startDate: trip.startDate, endDate: trip.endDate, entryInstructions: '', luggageNotes: '', notes: '', images: [], active: true, createdAt: now, updatedAt: now });
+    await putDocument({ id: 'document-delete', tripId: trip.id, title: 'Documento temporal', type: 'Otro', date: trip.startDate, notes: '', important: false, fileName: 'temporal.pdf', fileType: 'application/pdf', dataUrl: 'data:application/pdf;base64,JVBERi0=', createdAt: now });
+    await putExpense({ id: 'expense-delete', tripId: trip.id, concept: 'Gasto temporal', category: 'Otros', date: trip.startDate, amount: 10, currency: 'EUR', paidBy: '', paymentMethod: '', notes: '' });
+    await putPackingItem({ id: 'packing-delete', tripId: trip.id, list: 'Equipaje', title: 'Elemento temporal', done: false, person: '', quantity: 1, notes: '', order: 1 });
+    await putReminder({ id: 'reminder-delete', tripId: trip.id, title: 'Recordatorio temporal', date: trip.startDate, time: '09:00', notes: '', done: false });
+    const flight = await createFlight({ tripId: trip.id, flightNumber: 'IB1234', scheduledDate: trip.startDate, departureIata: 'MAD', arrivalIata: 'FCO' });
+
+    await deleteAccommodation('accommodation-delete');
+    await deleteDocument('document-delete');
+    await deleteExpense('expense-delete');
+    await deletePackingItem('packing-delete');
+    await deleteReminder('reminder-delete');
+    await deleteFlight(flight.id);
+    let snapshot = await getSnapshot();
+    expect([snapshot.accommodations, snapshot.documents, snapshot.expenses, snapshot.packingItems, snapshot.reminders, snapshot.flights].every((items) => items.length === 0)).toBe(true);
+
+    await createActivity({ tripId: trip.id, title: 'Actividad que debe desaparecer', day: trip.startDate });
+    await putDocument({ id: 'document-cascade', tripId: trip.id, title: 'Documento en cascada', type: 'Otro', date: trip.startDate, notes: '', important: false, fileName: 'cascada.pdf', fileType: 'application/pdf', dataUrl: '', createdAt: now });
+    await deleteTrip(trip.id);
+    snapshot = await getSnapshot();
+    const backup = await exportBackup();
+    expect(snapshot.trips.some((item) => item.id === trip.id)).toBe(false);
+    expect(backup.activities.some((item) => item.tripId === trip.id)).toBe(false);
+    expect(backup.documents.some((item) => item.tripId === trip.id)).toBe(false);
   });
 
   it('reordena y cambia de día una actividad', async () => {

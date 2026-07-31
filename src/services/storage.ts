@@ -259,6 +259,11 @@ export async function putAccommodation(accommodation: Accommodation) {
   await db.accommodations.put({ ...accommodation, updatedAt: new Date().toISOString() });
 }
 
+export async function deleteAccommodation(id: string) {
+  await ensureInitialData();
+  await db.accommodations.delete(id);
+}
+
 export async function putTransport(transport: Transport) {
   await ensureInitialData();
   await db.transports.put(transport);
@@ -269,9 +274,19 @@ export async function putDocument(document: TravelDocument) {
   await db.documents.put({ ...document, tripId: document.tripId || (await activeTripId()) });
 }
 
+export async function deleteDocument(id: string) {
+  await ensureInitialData();
+  await db.documents.delete(id);
+}
+
 export async function putExpense(expense: Expense) {
   await ensureInitialData();
   await db.expenses.put({ ...expense, tripId: expense.tripId || (await activeTripId()) });
+}
+
+export async function deleteExpense(id: string) {
+  await ensureInitialData();
+  await db.expenses.delete(id);
 }
 
 export async function putPackingItem(item: PackingItem) {
@@ -279,9 +294,19 @@ export async function putPackingItem(item: PackingItem) {
   await db.packingItems.put({ ...item, tripId: item.tripId || (await activeTripId()) });
 }
 
+export async function deletePackingItem(id: string) {
+  await ensureInitialData();
+  await db.packingItems.delete(id);
+}
+
 export async function putReminder(reminder: Reminder) {
   await ensureInitialData();
   await db.reminders.put({ ...reminder, tripId: reminder.tripId || (await activeTripId()) });
+}
+
+export async function deleteReminder(id: string) {
+  await ensureInitialData();
+  await db.reminders.delete(id);
 }
 
 export async function putSettings(settings: AppSettings) {
@@ -363,6 +388,44 @@ export async function selectTrip(tripId: string) {
   await db.settings.put({ ...settings, activeTripId: tripId });
 }
 
+export async function deleteTrip(tripId: string) {
+  await ensureInitialData();
+  const settings = (await db.settings.get('settings')) ?? initialSettings;
+  const flights = await db.flights.where('tripId').equals(tripId).toArray();
+
+  await db.transaction('rw', db.tables, async () => {
+    await Promise.all([
+      db.activities.where('tripId').equals(tripId).delete(),
+      db.accommodations.where('tripId').equals(tripId).delete(),
+      db.transports.where('tripId').equals(tripId).delete(),
+      db.documents.where('tripId').equals(tripId).delete(),
+      db.expenses.where('tripId').equals(tripId).delete(),
+      db.packingItems.where('tripId').equals(tripId).delete(),
+      db.reminders.where('tripId').equals(tripId).delete(),
+      db.flights.where('tripId').equals(tripId).delete(),
+      db.flightAlerts.where('tripId').equals(tripId).delete(),
+      db.searchHistory.where('tripId').equals(tripId).delete(),
+      db.savedPlaces.where('tripId').equals(tripId).delete(),
+    ]);
+    if (flights.length) {
+      await db.flightStatusHistory.where('flightId').anyOf(flights.map((flight) => flight.id)).delete();
+    }
+    await db.trips.delete(tripId);
+
+    let remaining = await db.trips.orderBy('startDate').first();
+    if (!remaining) {
+      remaining = { ...clone(initialTrips[0]), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+      await db.trips.put(remaining);
+    }
+    const activeTripStillExists = await db.trips.get(settings.activeTripId);
+    await db.settings.put({
+      ...settings,
+      activeTripId: settings.activeTripId === tripId || !activeTripStillExists ? remaining.id : settings.activeTripId,
+      initialized: true,
+    });
+  });
+}
+
 export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'new') {
   const validationErrors = validatePdfImportDraft(data);
   if (validationErrors.length) throw new Error(validationErrors[0]);
@@ -437,6 +500,17 @@ export async function saveFlight(flight: Flight) {
   if (duplicate) throw new Error('Ya existe este vuelo para la misma fecha.');
   await db.flights.put(updated);
   return updated;
+}
+
+export async function deleteFlight(id: string) {
+  await ensureInitialData();
+  await db.transaction('rw', [db.flights, db.flightStatusHistory, db.flightAlerts], async () => {
+    await Promise.all([
+      db.flightStatusHistory.where('flightId').equals(id).delete(),
+      db.flightAlerts.where('flightId').equals(id).delete(),
+      db.flights.delete(id),
+    ]);
+  });
 }
 
 export async function createFlight(input: Partial<Flight> & Pick<Flight, 'flightNumber' | 'scheduledDate'>) {
@@ -683,7 +757,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.2.2',
+    version: '3.3.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

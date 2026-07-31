@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   ShieldAlert,
+  Trash2,
   WifiOff,
   X,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ import {
   applyFlightStatusResult,
   clearFlightStatusCache,
   createFlight,
+  deleteFlight,
   markAlertRead,
   putSettings,
   recordFlightError,
@@ -163,6 +165,18 @@ export function FlightDetailView(props: FlightViewProps) {
           {flight.autoUpdateEnabled ? 'Desactivar actualización automática' : 'Activar actualización automática'}
         </button>
         <button onClick={() => setShowImpact((value) => !value)}>Revisar impacto en el itinerario</button>
+        <button
+          className="danger-button"
+          onClick={async () => {
+            if (!confirm(`¿Eliminar el vuelo ${flight.flightNumber} y su historial?`)) return;
+            await deleteFlight(flight.id);
+            await props.refresh();
+            props.notify('Vuelo eliminado');
+            navigate('/vuelos');
+          }}
+        >
+          <Trash2 size={18} /> Eliminar vuelo
+        </button>
       </div>
 
       {Object.keys(flight.automaticConflicts).length > 0 && (

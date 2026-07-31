@@ -37,6 +37,7 @@ import {
   Navigation,
   Plane,
   Plus,
+  RotateCcw,
   ShoppingBag,
   Share2,
   Ticket,
@@ -71,7 +72,12 @@ import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from 
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
 import {
   createActivity,
+  deleteAccommodation,
   deleteActivity,
+  deleteDocument,
+  deleteExpense,
+  deletePackingItem,
+  deleteReminder,
   duplicateActivity,
   exportBackup,
   getSnapshot,
@@ -951,6 +957,12 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
             setForm((current) => ({ ...current, mainImage: image.dataUrl, gallery: [...(current.gallery ?? []), image] }));
           }}
         />
+        {form.mainImage && (
+          <div className="image-editor-preview">
+            <img src={form.mainImage} alt="Vista previa de la actividad" />
+            <button className="danger-button" onClick={() => setForm((current) => ({ ...current, mainImage: '', gallery: [] }))}><Trash2 size={17} /> Eliminar fotografías</button>
+          </div>
+        )}
         <div className="button-row end">
           <button className="secondary" onClick={onClose}>Cancelar</button>
           <button className="primary" onClick={submit}>Guardar</button>
@@ -1058,6 +1070,7 @@ function EditableAccommodation({ accommodation, refresh, notify }: { accommodati
       <div className="button-row">
         <MapButtons query={item.address} />
         <button className="primary" onClick={async () => { await putAccommodation(item); await refresh(); notify('Alojamiento guardado'); }}>Guardar</button>
+        <button className="danger-button" onClick={async () => { if (confirm(`¿Eliminar el alojamiento “${item.name}”?`)) { await deleteAccommodation(item.id); await refresh(); notify('Alojamiento eliminado'); } }}><Trash2 size={18} /> Eliminar</button>
       </div>
     </article>
   );
@@ -1096,7 +1109,7 @@ function DocumentsPanel({ snapshot, refresh, notify }: ViewProps) {
         }} />
       </div>
       {snapshot.documents.map((doc) => (
-        <article className="activity-card" key={doc.id}><FileText size={22} /><div><h3>{doc.title}</h3><p>{doc.fileName}</p>{doc.dataUrl && <a href={doc.dataUrl} download={doc.fileName}>Abrir archivo</a>}</div></article>
+        <article className="activity-card" key={doc.id}><FileText size={22} /><div className="activity-main"><h3>{doc.title}</h3><p>{doc.fileName}</p><div className="icon-actions">{doc.dataUrl && <a aria-label={`Abrir documento ${doc.title}`} title="Abrir archivo" href={doc.dataUrl} download={doc.fileName}><Download size={18} /></a>}<button aria-label={`Eliminar documento ${doc.title}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el documento “${doc.title}”?`)) { await deleteDocument(doc.id); await refresh(); notify('Documento eliminado'); } }}><Trash2 size={18} /></button></div></div></article>
       ))}
     </div>
   );
@@ -1121,7 +1134,7 @@ function ExpensesPanel({ snapshot, refresh, notify }: ViewProps) {
         </div>
         <button className="primary" onClick={async () => { if (!expense.concept || expense.amount <= 0) return notify('Concepto e importe son obligatorios'); await putExpense({ ...expense, id: uuid() }); await refresh(); notify('Gasto guardado'); }}><Euro size={18} /> Añadir gasto</button>
       </div>
-      {snapshot.expenses.map((item) => <article className="activity-card" key={item.id}><Euro size={22} /><div><h3>{item.concept}</h3><p>{item.amount} {item.currency} · {item.category}</p></div></article>)}
+      {snapshot.expenses.map((item) => <article className="activity-card" key={item.id}><Euro size={22} /><div className="activity-main"><h3>{item.concept}</h3><p>{item.amount} {item.currency} · {item.category}</p><div className="icon-actions"><button aria-label={`Eliminar gasto ${item.concept}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el gasto “${item.concept}”?`)) { await deleteExpense(item.id); await refresh(); notify('Gasto eliminado'); } }}><Trash2 size={18} /></button></div></div></article>)}
     </div>
   );
 }
@@ -1135,11 +1148,12 @@ function PackingPanel({ snapshot, refresh, notify }: ViewProps) {
         <button className="primary" onClick={async () => { if (!title.trim()) return; await putPackingItem({ id: uuid(), tripId: snapshot.activeTrip.id, list: 'Equipaje', title, done: false, person: '', quantity: 1, notes: '', order: snapshot.packingItems.length + 1 }); setTitle(''); await refresh(); notify('Elemento añadido'); }}><Plus size={18} /> Añadir</button>
       </div>
       {snapshot.packingItems.map((item) => (
-        <label className="check-row" key={item.id}>
-          <input type="checkbox" checked={item.done} onChange={async (event) => { await putPackingItem({ ...item, done: event.target.checked }); await refresh(); }} />
+        <div className="check-row" key={item.id}>
+          <input aria-label={`Marcar ${item.title}`} type="checkbox" checked={item.done} onChange={async (event) => { await putPackingItem({ ...item, done: event.target.checked }); await refresh(); }} />
           <span>{item.title}</span>
           <small>{item.list}</small>
-        </label>
+          <button aria-label={`Eliminar ${item.title} del equipaje`} title="Eliminar" onClick={async () => { await deletePackingItem(item.id); await refresh(); notify('Elemento eliminado'); }}><Trash2 size={17} /></button>
+        </div>
       ))}
     </div>
   );
@@ -1159,7 +1173,7 @@ function RemindersPanel({ snapshot, refresh, notify }: ViewProps) {
         <label>Recordatorio<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
         <button className="primary" onClick={async () => { if (!title) return; await putReminder({ id: uuid(), tripId: snapshot.activeTrip.id, title, date: today, time: '09:00', notes: '', done: false }); setTitle(''); await refresh(); }}>Añadir</button>
       </div>
-      {snapshot.reminders.map((item) => <label className="check-row" key={item.id}><input type="checkbox" checked={item.done} onChange={async (event) => { await putReminder({ ...item, done: event.target.checked }); await refresh(); }} /><span>{item.title}</span><small>{item.date} {item.time}</small></label>)}
+      {snapshot.reminders.map((item) => <div className="check-row" key={item.id}><input aria-label={`Marcar ${item.title}`} type="checkbox" checked={item.done} onChange={async (event) => { await putReminder({ ...item, done: event.target.checked }); await refresh(); }} /><span>{item.title}</span><small>{item.date} {item.time}</small><button aria-label={`Eliminar recordatorio ${item.title}`} title="Eliminar" onClick={async () => { await deleteReminder(item.id); await refresh(); notify('Recordatorio eliminado'); }}><Trash2 size={17} /></button></div>)}
     </div>
   );
 }
@@ -1224,8 +1238,9 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       </div>
       {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities.length} actividades, {preview.expenses.length} gastos.</p><button className="primary" onClick={async () => { try { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); } catch { notify('No se pudo importar la copia'); } }}>Sustituir datos</button><button className="secondary" onClick={async () => { try { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); } catch { notify('No se pudo combinar la copia'); } }}>Combinar</button></div>}
       <div className="danger-zone">
-        <button onClick={async () => { if (confirm('¿Vaciar todos los datos locales y volver al inicio?')) { await restoreInitialData(); await refresh(); notify('Datos locales vaciados'); } }}>Vaciar datos locales</button>
-        <p>TravelCaris 3.2.2. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
+        <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
+        <p>TravelCaris 3.3.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
