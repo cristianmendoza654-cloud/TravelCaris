@@ -127,6 +127,28 @@ test('ubica automáticamente los lugares importados en el mapa', async ({ page }
   await expect(placeSelect.locator('option', { hasText: 'Sin ubicar · Coliseo' })).toHaveCount(0);
 });
 
+test('recupera automáticamente los lugares pendientes de un viaje ya importado', async ({ page }) => {
+  await page.route('https://nominatim.openstreetmap.org/search?**', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify([{ lat: '41.8902', lon: '12.4922' }]),
+  }));
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Importar PDF' }).click();
+  await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+    name: 'roma-pendiente.pdf',
+    mimeType: 'application/pdf',
+    buffer: travelCarisPdfFixture(),
+  });
+  await page.getByLabel('Ubicar lugares automáticamente').uncheck();
+  await page.getByRole('button', { name: 'Confirmar importación' }).click();
+  await page.getByRole('navigation', { name: /principal/i }).getByRole('link', { name: /Mapa/i }).click();
+
+  await page.getByRole('button', { name: 'Ubicar 1 pendientes' }).click();
+  const placeSelect = page.getByLabel('Lugar que quieres ubicar');
+  await expect(placeSelect.locator('option', { hasText: 'Actualizar · Coliseo' })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: /Ubicar .* pendientes/ })).toHaveCount(0);
+});
+
 test('importa un PDF real en WebKit móvil cuando se proporciona localmente', async ({ page }) => {
   const pdfPath = process.env.TRAVELCARIS_TEST_PDF;
   test.skip(!pdfPath, 'No se proporcionó un PDF privado para esta comprobación local.');
@@ -138,6 +160,7 @@ test('importa un PDF real en WebKit móvil cuando se proporciona localmente', as
   const counts = await summary.locator('strong').allTextContents();
   expect(Number(counts[1])).toBeGreaterThan(0);
   expect(Number(counts[2])).toBeGreaterThan(0);
+  expect(Number(counts[5])).toBeGreaterThan(0);
 });
 
 test('muestra la ubicación actual solo después de conceder permiso', async ({ page, context }) => {
@@ -161,6 +184,9 @@ test('los controles de una tarjeta permiten editar, revisar y reordenar', async 
 
   const card = page.locator('.activity-card').filter({ hasText: 'Museo de prueba' });
   await expect(card.getByRole('button', { name: 'Reordenar Museo de prueba' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Reordenar Museo de prueba' })).toContainText('Ordenar');
+  await expect(card.getByRole('button', { name: 'Editar actividad' })).toContainText('Editar');
+  await expect(card.getByRole('link', { name: 'Abrir mapa' })).toContainText('Mapa');
   await card.getByRole('button', { name: 'Editar actividad' }).click();
   await expect(page.getByRole('dialog', { name: 'Editor de actividad' })).toBeVisible();
   await expect(page.getByLabel('Título')).toHaveValue('Museo de prueba');
@@ -169,6 +195,9 @@ test('los controles de una tarjeta permiten editar, revisar y reordenar', async 
   await expect(card.getByText('Verificar datos')).toBeVisible();
   await card.getByRole('button', { name: 'Marcar datos como revisados' }).click();
   await expect(card.getByText('Verificar datos')).toHaveCount(0);
+  await card.getByText('Más acciones', { exact: true }).click();
+  await expect(card.getByRole('button', { name: 'Duplicar actividad' })).toContainText('Duplicar');
+  await expect(card.getByRole('button', { name: 'Eliminar actividad' })).toContainText('Eliminar');
 });
 
 test('permite marcar manualmente un paso de preparación como revisado', async ({ page }) => {
@@ -209,7 +238,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.7.1')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.8.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

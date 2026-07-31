@@ -26,8 +26,10 @@ export async function geocodePdfDraft(draft: PdfImportDraft, options: GeocodingO
   const activities = draft.activities.map((item) => ({ ...item }));
   const accommodations = draft.accommodations.map((item) => ({ ...item }));
   const targets = [
-    ...activities.map((item) => ({ item, label: item.title, query: placeQuery(item.address, item.title, draft) })),
     ...accommodations.map((item) => ({ item, label: item.name, query: placeQuery(item.address, item.name, draft) })),
+    ...activities
+      .filter(isGeocodableActivity)
+      .map((item) => ({ item, label: item.title, query: placeQuery(item.address, item.title, draft) })),
   ].filter(({ item, query }) => !hasCoordinates(item.lat, item.lng) && Boolean(query));
 
   const cache = new Map<string, { lat: number; lng: number } | null>();
@@ -61,6 +63,12 @@ export async function geocodePdfDraft(draft: PdfImportDraft, options: GeocodingO
     unresolved: targets.length - located,
     attempted,
   };
+}
+
+function isGeocodableActivity(activity: PdfImportDraft['activities'][number]) {
+  if (['Transporte', 'Aeropuerto'].includes(activity.category ?? '')) return false;
+  if (/^(?:desayuno|comida|cena|equipaje|preparar|recoger|salida|llegada|traslado|vuelo|decisi[oó]n|seg[uú]n horario|revisar|llamar|reservar)\b/i.test(activity.title.trim())) return false;
+  return Boolean(activity.address?.trim() || activity.title.trim());
 }
 
 function placeQuery(address: string | undefined, name: string, draft: PdfImportDraft) {

@@ -1,5 +1,5 @@
 /* global self, caches, fetch, URL, location */
-const CACHE_NAME = 'travelcaris-v13';
+const CACHE_NAME = 'travelcaris-v14';
 const APP_SHELL = [
   '/',
   '/index.html',

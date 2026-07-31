@@ -75,6 +75,31 @@ VUELTA U22315 05/08/2026 LTN 20:00 ALC 23:40 CONFIRMADO`], 'v3-sin-anexo.pdf');
     expect(result.flights[1]).toMatchObject({ flightNumber: 'U22315', scheduledDate: '2026-08-05', departureIata: 'LTN', arrivalIata: 'ALC' });
   });
 
+  it('enlaza el itinerario con el directorio geográfico y limpia los estados del título', () => {
+    const result = parseTravelDocumentText([`LONDRES EN FAMILIA
+1-2 DE AGOSTO DE 2026
+Día 1 · Sábado 1 · Museos
+Hora Plan
+10:00 British Museum CONFIRMADO Reserva completada
+14:00 Preparar equipaje PENDIENTE
+LOC-01 British Museum · entrada principal VERIFICADO_OFICIAL + CARTOGRAFICO
+TIPO / ACCESO: ENTRADA DE VISITANTES
+DIRECCION: Great Russell Street, London, Reino Unido
+LATITUD: 51.519413    LONGITUD: -0.126957
+VERIFICACION: VERIFICADO_OFICIAL + CARTOGRAFICO    FECHA_VERIFICACION: 31/07/2026
+NOTA: Acceso principal verificado.`]);
+
+    expect(result.activities[0]).toMatchObject({
+      title: 'British Museum',
+      address: 'Great Russell Street, London, Reino Unido',
+      lat: 51.519413,
+      lng: -0.126957,
+      verificationStatus: 'Verificado',
+      lastVerifiedAt: '2026-07-31',
+    });
+    expect(result.activities[1]).toMatchObject({ title: 'Preparar equipaje', address: '' });
+  });
+
   it('importa el perfil, recordatorios y equipaje del formato V2', () => {
     const result = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V2
 [VIAJE]

@@ -62,6 +62,15 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .muted { color: var(--muted); }
 .meta-row, .button-row, .icon-actions, .grid-actions, .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .icon-actions button, .icon-actions a { width: 40px; height: 40px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); text-decoration: none; }
+.labeled-actions button, .labeled-actions a { width: auto; height: auto; min-height: 40px; display: inline-flex; gap: 7px; padding: 8px 11px; font-size: 0.8rem; font-weight: 800; }
+.activity-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 10px; }
+.activity-actions > button, .activity-actions > a, .activity-more-actions summary, .activity-more-actions > div > button, .activity-more-actions > div > a { min-height: 40px; padding: 8px 11px; font-size: 0.8rem; font-weight: 800; }
+.activity-actions > a, .activity-more-actions > div > a { display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; color: var(--ink); text-decoration: none; }
+.activity-more-actions { flex-basis: 100%; }
+.activity-more-actions summary { width: fit-content; display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; list-style: none; background: var(--surface); }
+.activity-more-actions summary::-webkit-details-marker { display: none; }
+.activity-more-actions[open] summary { border-color: var(--brand); color: var(--brand); }
+.activity-more-actions > div { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; padding: 10px; border-left: 3px solid var(--brand); background: var(--surface-alt); }
 .drag-handle { cursor: grab; touch-action: none; }
 .drag-handle:active { cursor: grabbing; }
 button, .external-button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease; }
@@ -136,6 +145,9 @@ textarea { min-height: 86px; resize: vertical; }
 .map-placement-panel label { color: var(--muted); font-size: 0.78rem; }
 .map-placement-panel select { color: var(--ink); font-size: 0.9rem; font-weight: 750; }
 .map-placement-panel p { margin: 0; color: var(--muted); font-size: 0.82rem; line-height: 1.4; }
+.map-placement-status { display: grid; gap: 7px; justify-items: start; }
+.map-placement-status button { min-height: 38px; padding: 7px 10px; font-size: 0.78rem; }
+.map-placement-status span { color: var(--muted); font-size: 0.75rem; overflow-wrap: anywhere; }
 .map-wrap { position: relative; z-index: 0; isolation: isolate; min-height: 500px; border-radius: 8px; overflow: hidden; border: 1px solid var(--line); box-shadow: var(--shadow); background: #dce8e5; }
 .map-wrap.is-placing .leaflet-container { cursor: crosshair; }
 .leaflet-map { z-index: 0; height: 500px; width: 100%; }
@@ -349,7 +361,7 @@ textarea { min-height: 86px; resize: vertical; }
 .ai-prepare-button { justify-self: start; }
 .ai-prompt-result { display: grid; gap: 12px; }
 .ai-prompt-preview { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
-.import-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.import-summary { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .import-summary div { display: grid; gap: 3px; padding: 12px; border-right: 1px solid var(--line); text-align: center; }
 .import-summary div:last-child { border-right: 0; }
 .import-summary strong { font-size: 1.35rem; }
@@ -360,6 +372,7 @@ textarea { min-height: 86px; resize: vertical; }
 .import-details p { margin: 9px 0 0; overflow-wrap: anywhere; }
 .import-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: end; padding: 11px 0; border-bottom: 1px solid var(--line); }
 .import-edit-row:last-child { border-bottom: 0; }
+.import-remove-button { align-self: end; min-height: 40px; padding: 8px 10px; font-size: 0.78rem; font-weight: 800; }
 .import-edit-row label { color: var(--muted); font-size: 0.72rem; }
 .import-edit-row input, .import-edit-row select { min-height: 40px; padding: 8px 9px; color: var(--ink); font-size: 0.84rem; font-weight: 700; }
 .import-activity-grid { display: grid; grid-template-columns: 128px 96px 150px minmax(190px, 1fr); gap: 8px; }
@@ -382,7 +395,7 @@ textarea { min-height: 86px; resize: vertical; }
   .map-toolbar, .map-filters { grid-template-columns: 1fr; }
   .location-control { width: 100%; }
   .map-placement-panel { grid-template-columns: auto 1fr; }
-  .map-placement-panel p { grid-column: 1 / -1; }
+  .map-placement-status { grid-column: 1 / -1; }
   .map-confirmation { grid-template-columns: 1fr 1fr; }
   .map-confirmation > div { grid-column: 1 / -1; }
   .map-confirmation button { min-width: 0; }

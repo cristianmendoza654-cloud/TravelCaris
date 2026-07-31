@@ -175,7 +175,8 @@ export function parseTravelDocumentText(pages: string[], fileName = 'viaje.pdf')
   const startDate = range?.startDate ?? fallbackDate;
   const endDate = range?.endDate ?? startDate;
   const safeDestination = destination || 'Destino por revisar';
-  const activities = detectActivities(lines, startDate);
+  const geographicPlaces = detectGeographicPlaces(lines);
+  const activities = enrichActivitiesWithGeographicPlaces(detectActivities(lines, startDate), geographicPlaces);
   const accommodations = detectAccommodations(lines, startDate, endDate);
   const flights = detectFlights(fullText, startDate);
 
@@ -251,6 +252,16 @@ export function validatePdfImportDraft(draft: PdfImportDraft) {
 interface StructuredSection {
   name: string;
   fields: Record<string, string>;
+}
+
+interface GeographicPlace {
+  name: string;
+  address: string;
+  lat?: number;
+  lng?: number;
+  verificationStatus: Activity['verificationStatus'];
+  lastVerifiedAt: string;
+  notes: string;
 }
 
 function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImportDraft | null {
@@ -518,6 +529,80 @@ function detectDestination(lines: string[]) {
   return destinationLine ? titleCase(destinationLine.split(':').slice(1).join(':')) : '';
 }
 
+function detectGeographicPlaces(lines: string[]): GeographicPlace[] {
+  const places: GeographicPlace[] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const record = lines[index].match(/^LOC-\d+\s+(.+)$/i);
+    if (!record) continue;
+    const details = lines.slice(index + 1, index + 12);
+    const name = cleanGeographicName(record[1]);
+    const address = prefixedValue(details, 'DIRECCION');
+    const coordinates = details.join(' ').match(/LATITUD:\s*(-?\d+(?:[.,]\d+)?)\s+LONGITUD:\s*(-?\d+(?:[.,]\d+)?)/i);
+    const verification = prefixedValue(details, 'VERIFICACION');
+    const verifiedAt = details.join(' ').match(/FECHA_VERIFICACION:\s*(\d{2})\/(\d{2})\/(\d{4})/i);
+    places.push({
+      name,
+      address,
+      lat: coordinates ? coordinate(coordinates[1], -90, 90) : undefined,
+      lng: coordinates ? coordinate(coordinates[2], -180, 180) : undefined,
+      verificationStatus: /NO VERIFICADO|PENDIENTE/i.test(fold(verification))
+        ? 'Pendiente de verificar'
+        : /OFICIAL|CARTOGRAFICO/i.test(fold(verification)) ? 'Verificado' : 'Fuente no oficial',
+      lastVerifiedAt: verifiedAt ? isoDate(Number(verifiedAt[3]), Number(verifiedAt[2]), Number(verifiedAt[1])) : '',
+      notes: prefixedValue(details, 'NOTA'),
+    });
+  }
+  return uniqueBy(places, (place) => `${fold(place.name)}|${fold(place.address)}`);
+}
+
+function enrichActivitiesWithGeographicPlaces(
+  activities: PdfImportDraft['activities'],
+  places: GeographicPlace[],
+): PdfImportDraft['activities'] {
+  return activities.map((activity) => {
+    const match = places
+      .map((place) => ({ place, score: geographicMatchScore(activity.title, place.name) }))
+      .filter((candidate) => candidate.score >= 0.66)
+      .sort((left, right) => right.score - left.score)[0]?.place;
+    if (!match) return activity;
+    return {
+      ...activity,
+      address: match.address || activity.address,
+      lat: match.lat,
+      lng: match.lng,
+      sourceName: 'Directorio geográfico del PDF',
+      verificationStatus: match.verificationStatus,
+      lastVerifiedAt: match.lastVerifiedAt,
+      verificationNote: match.notes || activity.verificationNote,
+    };
+  });
+}
+
+function geographicMatchScore(activityTitle: string, placeName: string) {
+  const activityTokens = significantPlaceTokens(activityTitle);
+  const placeTokens = significantPlaceTokens(placeName);
+  if (!activityTokens.length || !placeTokens.length) return 0;
+  const common = activityTokens.filter((token) => placeTokens.includes(token));
+  if (!common.length) return 0;
+  return common.length / Math.min(activityTokens.length, placeTokens.length);
+}
+
+function significantPlaceTokens(value: string) {
+  const ignored = new Set(['hacia', 'desde', 'para', 'cerca', 'entrada', 'salida', 'main', 'central', 'visitor', 'gate', 'exterior', 'international', 'road', 'street', 'acceso']);
+  return fold(value)
+    .toLocaleLowerCase('es')
+    .replace(/[^a-z0-9\s]/g, ' ')
+    .split(/\s+/)
+    .filter((token) => token.length >= 3 && !ignored.has(token));
+}
+
+function cleanGeographicName(value: string) {
+  return value
+    .replace(/\s+(?:VERIFICADO|NO VERIFICADO)(?:_[\p{L}_]+)?(?:\s*[+-]\s*[\p{L}_]+)*(?:\s*-\s*.+)?$/iu, '')
+    .replace(/\s+·\s+(?:entrada|terminal|acceso|verja|puerta|main|middle|south|north)\b.*$/iu, '')
+    .trim();
+}
+
 function detectAccommodations(lines: string[], startDate: string, endDate: string): PdfImportDraft['accommodations'] {
   const results: PdfImportDraft['accommodations'] = [];
   const now = new Date().toISOString();
@@ -776,6 +861,7 @@ function inferCategory(value: string): Activity['category'] {
 function activityTitle(value: string) {
   const sentence = value.split(/(?<=[.!?])\s+/)[0];
   return sentence
+    .split(/\s+(?=CONFIRMADO|PENDIENTE|PLANIFICADO|ALTERNATIVA|CONDICIONADO|CRITICO\b)/i)[0]
     .split(/\s+(?=Gratis\b|Pago\b|TfL\b|[£€]\s*\d|Reserva\s+(?:aconsejada|gratuita|necesaria)\b)/i)[0]
     .replace(/[.;,:\s-]+$/, '')
     .trim()
@@ -783,7 +869,7 @@ function activityTitle(value: string) {
 }
 
 function placeLikeTitle(value: string) {
-  if (/^(?:desayuno|comida|cena|recoger|dejar|salida|llegada|traslado)/i.test(fold(value))) return '';
+  if (/^(?:desayuno|comida|cena|recoger|dejar|salida|llegada|traslado|vuelo|equipaje|preparar|decision|segun horario)/i.test(fold(value))) return '';
   return value.replace(/\s*\([^)]*\)\s*/g, ' ').trim();
 }
 

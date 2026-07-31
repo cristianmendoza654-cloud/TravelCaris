@@ -87,6 +87,7 @@ import { dueReminders, nextReminderDelay, reminderCalendarFile, reminderTimestam
 import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from '../services/links';
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
 import { findAndStorePlaceImage } from '../services/placeImages';
+import { geocodePdfDraft } from '../services/geocoding';
 import {
   addAccommodationImageIfMissing,
   addActivityImageIfMissing,
@@ -540,6 +541,8 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
   const [mapFocus, setMapFocus] = useState<[number, number] | null>(null);
   const [placementTarget, setPlacementTarget] = useState('');
   const [draftLocation, setDraftLocation] = useState<[number, number] | null>(null);
+  const [locatingPending, setLocatingPending] = useState(false);
+  const [locationProgress, setLocationProgress] = useState('');
   const watchId = useRef<number | null>(null);
 
   useEffect(() => {
@@ -556,7 +559,7 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
     if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
   }, []);
 
-  const allPlaces = useMemo<MapPlace[]>(() => [
+  const allPlaces = useMemo<MapPlace[]>(() => ([
     ...snapshot.activities.map((activity) => ({
       id: activity.id,
       entity: 'activity' as const,
@@ -583,7 +586,7 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
       endDate: accommodation.endDate,
       time: accommodation.checkIn,
     })),
-  ], [snapshot.accommodations, snapshot.activities]);
+  ]).filter(isMapRelevantPlace), [snapshot.accommodations, snapshot.activities]);
 
   const filteredPlaces = allPlaces.filter((place) =>
     (day === 'all' || (day >= place.startDate && day <= place.endDate)) &&
@@ -593,6 +596,7 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
   const positionablePlaces = [...allPlaces].sort((a, b) =>
     Number(hasMapCoordinates(a)) - Number(hasMapCoordinates(b)) || a.title.localeCompare(b.title),
   );
+  const pendingPlaceCount = positionablePlaces.filter((place) => !hasMapCoordinates(place)).length;
   const mapCenter: [number, number] = locatedPlaces.length
     ? [
         locatedPlaces.reduce((sum, place) => sum + place.lat!, 0) / locatedPlaces.length,
@@ -652,6 +656,49 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
     notify('Punto guardado en el mapa');
   };
 
+  const locatePendingPlaces = async () => {
+    if (!online || !pendingPlaceCount) return;
+    setLocatingPending(true);
+    setLocationProgress('Preparando lugares pendientes...');
+    try {
+      const result = await geocodePdfDraft({
+        fileName: '',
+        trip: snapshot.activeTrip,
+        activities: snapshot.activities,
+        accommodations: snapshot.accommodations,
+        flights: [],
+        reminders: [],
+        packingItems: [],
+        warnings: [],
+      }, {
+        onProgress: (current, total, label) => setLocationProgress(`Ubicando ${current} de ${total}: ${label}`),
+      });
+      const writes: Promise<unknown>[] = [];
+      result.draft.activities.forEach((activity, index) => {
+        const original = snapshot.activities[index];
+        if (original && Number.isFinite(activity.lat) && Number.isFinite(activity.lng) &&
+          (original.lat !== activity.lat || original.lng !== activity.lng)) {
+          writes.push(saveActivity({ ...original, lat: activity.lat, lng: activity.lng }));
+        }
+      });
+      result.draft.accommodations.forEach((accommodation, index) => {
+        const original = snapshot.accommodations[index];
+        if (original && Number.isFinite(accommodation.lat) && Number.isFinite(accommodation.lng) &&
+          (original.lat !== accommodation.lat || original.lng !== accommodation.lng)) {
+          writes.push(putAccommodation({ ...original, lat: accommodation.lat, lng: accommodation.lng }));
+        }
+      });
+      await Promise.all(writes);
+      await refresh();
+      notify(result.located
+        ? `${result.located} lugares ubicados automáticamente${result.unresolved ? `; ${result.unresolved} siguen pendientes` : ''}`
+        : 'No se encontraron coordenadas nuevas. Revisa las direcciones pendientes.');
+    } finally {
+      setLocatingPending(false);
+      setLocationProgress('');
+    }
+  };
+
   return (
     <section className="page-stack map-page">
       <Hero trip={snapshot.activeTrip} title="Mapa" subtitle="Tu viaje, organizado por tipo de lugar" />
@@ -708,7 +755,16 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
             ))}
           </select>
         </label>
-        <p>{placementTarget ? 'Toca el punto exacto en el mapa y confirma la ubicación.' : `${filteredPlaces.length - locatedPlaces.length} lugares del filtro todavía no tienen coordenadas.`}</p>
+        <div className="map-placement-status">
+          <p>{placementTarget ? 'Toca el punto exacto en el mapa y confirma la ubicación.' : `${filteredPlaces.length - locatedPlaces.length} lugares del filtro todavía no tienen coordenadas.`}</p>
+          {!placementTarget && pendingPlaceCount > 0 && (
+            <button className="secondary" disabled={!online || locatingPending} onClick={locatePendingPlaces}>
+              {locatingPending ? <LoaderCircle className="spinning" size={17} /> : <LocateFixed size={17} />}
+              {locatingPending ? 'Ubicando...' : `Ubicar ${pendingPlaceCount} pendientes`}
+            </button>
+          )}
+          {locationProgress && <span role="status">{locationProgress}</span>}
+        </div>
       </div>
 
       {!online && <div className="info-band">El listado guardado funciona sin conexión. Las teselas de OpenStreetMap necesitan internet.</div>}
@@ -792,6 +848,16 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
 
 function hasMapCoordinates(place: Pick<MapPlace, 'lat' | 'lng'>): place is MapPlace & { lat: number; lng: number } {
   return Number.isFinite(place.lat) && Number.isFinite(place.lng);
+}
+
+function isMapRelevantPlace(place: MapPlace) {
+  if (place.entity === 'accommodation' || hasMapCoordinates(place)) return true;
+  if (['Transporte', 'Aeropuerto'].includes(place.category)) return false;
+  return !/^(?:desayuno|comida|cena|equipaje|preparar|recoger|salida|llegada|traslado|vuelo|decision|segun horario|revisar|llamar|reservar)\b/i.test(foldMapText(place.title));
+}
+
+function foldMapText(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 }
 
 function MapClickCapture({ enabled, onSelect }: { enabled: boolean; onSelect: (point: [number, number]) => void }) {
@@ -934,10 +1000,14 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
   }, [activity.address, activity.id, activity.mainImage, activity.title, refresh]);
   const doShare = async () => {
     const text = shareText(activity.title, [activity.startTime, activity.address, activity.notes]);
-    if (navigator.share) await navigator.share({ title: activity.title, text });
-    else {
-      await navigator.clipboard.writeText(text);
-      notify('Copiado al portapapeles');
+    try {
+      if (navigator.share) await navigator.share({ title: activity.title, text });
+      else if (navigator.clipboard) {
+        await navigator.clipboard.writeText(text);
+        notify('Copiado al portapapeles');
+      } else notify('Compartir no está disponible en este navegador');
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === 'AbortError')) notify('No se pudo compartir la actividad');
     }
   };
   return (
@@ -969,18 +1039,25 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
         {!compact && activity.openingHoursNote && <p className="detail-line"><strong>Horario:</strong> {activity.openingHoursNote}</p>}
         {!compact && activity.rainPlan && <p className="detail-line"><strong>Lluvia:</strong> {activity.rainPlan}</p>}
         {!compact && (activity.strollerFriendly || activity.accessibility) && <p className="detail-line"><strong>Acceso:</strong> {activity.strollerFriendly ? 'Apto para carrito. ' : ''}{activity.accessibility}</p>}
-        <div className="icon-actions">
+        <div className="activity-actions">
           {dragHandle}
-          {onEdit && <button aria-label="Editar actividad" title="Editar" onClick={onEdit}><Edit3 size={18} /></button>}
-          {stale && <button aria-label="Marcar datos como revisados" title="Datos revisados" onClick={async () => { await saveActivity({ ...activity, verificationStatus: 'Verificado', lastVerifiedAt: new Date().toISOString().slice(0, 10) }); await refresh(); notify('Datos de la actividad marcados como revisados'); }}><BadgeCheck size={18} /></button>}
-          <button aria-label="Duplicar actividad" title="Duplicar" onClick={async () => { await duplicateActivity(activity); await refresh(); notify('Actividad duplicada'); }}><ClipboardList size={18} /></button>
-          <button aria-label="Compartir actividad" title="Compartir" onClick={doShare}><Share2 size={18} /></button>
-          <a aria-label="Abrir mapa" title="Abrir mapa" href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer"><MapIcon size={18} /></a>
-          {isSafeExternalUrl(activity.officialLink) && <a aria-label="Abrir web oficial" title="Web oficial" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /></a>}
-          {isSafeExternalUrl(activity.reservationLink) && <a aria-label="Abrir reserva" title="Reserva" href={activity.reservationLink} target="_blank" rel="noreferrer"><FileText size={18} /></a>}
-          <button aria-label="Marcar como realizada" title="Realizada" onClick={async () => { await saveActivity({ ...activity, visited: !activity.visited, status: activity.visited ? 'Pendiente' : 'Realizado' }); await refresh(); }}><Check size={18} /></button>
-          <button aria-label="Eliminar actividad" title="Eliminar" onClick={async () => { if (confirm('¿Eliminar esta actividad?')) { await deleteActivity(activity.id); await refresh(); notify('Actividad eliminada'); } }}><Trash2 size={18} /></button>
-          <button aria-label="Mover a otro día" title="Cambiar día" onClick={async () => { const next = availableDays[(availableDays.indexOf(activity.day) + 1) % availableDays.length]; await moveActivity(activity.id, next); await refresh(); notify(`Movida a ${formatDate(next)}`); navigate('/itinerario'); }}><CalendarDays size={18} /></button>
+          {onEdit && <button aria-label="Editar actividad" onClick={onEdit}><Edit3 size={18} /><span>Editar</span></button>}
+          {stale && <button aria-label="Marcar datos como revisados" onClick={async () => { await saveActivity({ ...activity, verificationStatus: 'Verificado', lastVerifiedAt: new Date().toISOString().slice(0, 10) }); await refresh(); notify('Datos de la actividad marcados como revisados'); }}><BadgeCheck size={18} /><span>Revisado</span></button>}
+          <a aria-label="Abrir mapa" href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer"><MapIcon size={18} /><span>Mapa</span></a>
+          <button aria-label={activity.visited ? 'Marcar como pendiente' : 'Marcar como realizada'} onClick={async () => { await saveActivity({ ...activity, visited: !activity.visited, status: activity.visited ? 'Pendiente' : 'Realizado' }); await refresh(); notify(activity.visited ? 'Actividad reabierta' : 'Actividad realizada'); }}><Check size={18} /><span>{activity.visited ? 'Reabrir' : 'Realizada'}</span></button>
+          {!compact && (
+            <details className="activity-more-actions">
+              <summary><MoreHorizontal size={18} /><span>Más acciones</span></summary>
+              <div>
+                <button aria-label="Duplicar actividad" onClick={async () => { await duplicateActivity(activity); await refresh(); notify('Actividad duplicada'); }}><ClipboardList size={18} /><span>Duplicar</span></button>
+                <button aria-label="Compartir actividad" onClick={doShare}><Share2 size={18} /><span>Compartir</span></button>
+                {isSafeExternalUrl(activity.officialLink) && <a aria-label="Abrir web oficial" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /><span>Web oficial</span></a>}
+                {isSafeExternalUrl(activity.reservationLink) && <a aria-label="Abrir reserva" href={activity.reservationLink} target="_blank" rel="noreferrer"><FileText size={18} /><span>Reserva</span></a>}
+                <button aria-label="Mover a otro día" onClick={async () => { const next = availableDays[(availableDays.indexOf(activity.day) + 1) % availableDays.length]; await moveActivity(activity.id, next); await refresh(); notify(`Movida a ${formatDate(next)}`); navigate('/itinerario'); }}><CalendarDays size={18} /><span>Cambiar día</span></button>
+                <button className="danger-button" aria-label="Eliminar actividad" onClick={async () => { if (confirm('¿Eliminar esta actividad?')) { await deleteActivity(activity.id); await refresh(); notify('Actividad eliminada'); } }}><Trash2 size={18} /><span>Eliminar</span></button>
+              </div>
+            </details>
+          )}
         </div>
       </div>
     </article>
@@ -993,7 +1070,7 @@ function SortableActivity({ activity, children }: { activity: Activity; children
     <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
       {children(
         <button className="drag-handle" aria-label={`Reordenar ${activity.title}`} title="Arrastrar para ordenar" {...attributes} {...listeners}>
-          <GripVertical size={18} />
+          <GripVertical size={18} /><span>Ordenar</span>
         </button>,
       )}
     </div>
@@ -1376,7 +1453,7 @@ function DocumentsPanel({ snapshot, refresh, notify }: ViewProps) {
         }} />
       </div>
       {snapshot.documents.map((doc) => (
-        <article className="activity-card" key={doc.id}><FileText size={22} /><div className="activity-main"><h3>{doc.title}</h3><p>{doc.fileName}</p><div className="icon-actions">{doc.dataUrl && <a aria-label={`Abrir documento ${doc.title}`} title="Abrir archivo" href={doc.dataUrl} download={doc.fileName}><Download size={18} /></a>}<button aria-label={`Eliminar documento ${doc.title}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el documento “${doc.title}”?`)) { await deleteDocument(doc.id); await refresh(); notify('Documento eliminado'); } }}><Trash2 size={18} /></button></div></div></article>
+        <article className="activity-card" key={doc.id}><FileText size={22} /><div className="activity-main"><h3>{doc.title}</h3><p>{doc.fileName}</p><div className="icon-actions labeled-actions">{doc.dataUrl && <a aria-label={`Abrir documento ${doc.title}`} href={doc.dataUrl} download={doc.fileName}><Download size={18} /><span>Abrir</span></a>}<button aria-label={`Eliminar documento ${doc.title}`} className="danger-button" onClick={async () => { if (confirm(`¿Eliminar el documento “${doc.title}”?`)) { await deleteDocument(doc.id); await refresh(); notify('Documento eliminado'); } }}><Trash2 size={18} /><span>Eliminar</span></button></div></div></article>
       ))}
     </div>
   );
@@ -1409,7 +1486,7 @@ function ExpensesPanel({ snapshot, refresh, notify }: ViewProps) {
       {snapshot.expenses.map((item) => {
         const target = item.currency === trip.currency ? trip.secondaryCurrency : trip.currency;
         const converted = exchangeAvailable ? convertTripCurrency(item.amount, item.currency, target, trip.currency, trip.secondaryCurrency, trip.exchangeRate) : null;
-        return <article className="activity-card" key={item.id}><Euro size={22} /><div className="activity-main"><h3>{item.concept}</h3><p>{formatMoney(item.amount, item.currency)}{converted === null || target === item.currency ? '' : ` · ≈ ${formatMoney(converted, target)}`} · {item.category}</p><div className="icon-actions"><button aria-label={`Eliminar gasto ${item.concept}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el gasto “${item.concept}”?`)) { await deleteExpense(item.id); await refresh(); notify('Gasto eliminado'); } }}><Trash2 size={18} /></button></div></div></article>;
+        return <article className="activity-card" key={item.id}><Euro size={22} /><div className="activity-main"><h3>{item.concept}</h3><p>{formatMoney(item.amount, item.currency)}{converted === null || target === item.currency ? '' : ` · ≈ ${formatMoney(converted, target)}`} · {item.category}</p><div className="icon-actions labeled-actions"><button aria-label={`Eliminar gasto ${item.concept}`} className="danger-button" onClick={async () => { if (confirm(`¿Eliminar el gasto “${item.concept}”?`)) { await deleteExpense(item.id); await refresh(); notify('Gasto eliminado'); } }}><Trash2 size={18} /><span>Eliminar</span></button></div></div></article>;
       })}
     </div>
   );
@@ -1503,10 +1580,10 @@ function EditableReminder({ reminder, refresh, notify }: { reminder: Reminder; r
     <article className={`reminder-row ${reminder.done ? 'done' : ''} ${overdue ? 'overdue' : ''}`}>
       <input aria-label={`Marcar ${reminder.title}`} type="checkbox" checked={reminder.done} onChange={async (event) => { await putReminder({ ...reminder, done: event.target.checked }); await refresh(); }} />
       <div><strong>{reminder.title}</strong><time dateTime={`${reminder.date}T${reminder.time}`}>{formatReminderDate(reminder.date, reminder.time)}</time>{reminder.notes && <p>{reminder.notes}</p>}</div>
-      <div className="icon-actions">
-        <button aria-label={`Editar recordatorio ${reminder.title}`} title="Editar" onClick={() => { setDraft(reminder); setEditing(true); }}><Edit3 size={17} /></button>
-        <button aria-label={`Añadir ${reminder.title} al calendario`} title="Añadir al calendario" onClick={() => downloadText(`recordatorio-${slugify(reminder.title)}.ics`, reminderCalendarFile(reminder), 'text/calendar;charset=utf-8')}><CalendarPlus size={17} /></button>
-        <button aria-label={`Eliminar recordatorio ${reminder.title}`} title="Eliminar" onClick={async () => { if (confirm(`¿Eliminar el recordatorio “${reminder.title}”?`)) { await deleteReminder(reminder.id); await refresh(); notify('Recordatorio eliminado'); } }}><Trash2 size={17} /></button>
+      <div className="icon-actions labeled-actions">
+        <button aria-label={`Editar recordatorio ${reminder.title}`} onClick={() => { setDraft(reminder); setEditing(true); }}><Edit3 size={17} /><span>Editar</span></button>
+        <button aria-label={`Añadir ${reminder.title} al calendario`} onClick={() => downloadText(`recordatorio-${slugify(reminder.title)}.ics`, reminderCalendarFile(reminder), 'text/calendar;charset=utf-8')}><CalendarPlus size={17} /><span>Calendario</span></button>
+        <button aria-label={`Eliminar recordatorio ${reminder.title}`} className="danger-button" onClick={async () => { if (confirm(`¿Eliminar el recordatorio “${reminder.title}”?`)) { await deleteReminder(reminder.id); await refresh(); notify('Recordatorio eliminado'); } }}><Trash2 size={17} /><span>Eliminar</span></button>
       </div>
     </article>
   );
@@ -1613,7 +1690,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.7.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.8.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );

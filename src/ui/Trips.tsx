@@ -158,6 +158,9 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
   const updateTrip = <K extends keyof PdfImportDraft['trip']>(key: K, value: PdfImportDraft['trip'][K]) => {
     if (draft) setDraft({ ...draft, trip: { ...draft.trip, [key]: value } });
   };
+  const locatedPlaces = draft
+    ? [...draft.activities, ...draft.accommodations].filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)).length
+    : 0;
 
   return (
     <section className="form-card pdf-import-panel">
@@ -216,6 +219,7 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
             <div><strong>{draft.flights.length}</strong><span>Vuelos</span></div>
             <div><strong>{draft.reminders.length}</strong><span>Recordatorios</span></div>
             <div><strong>{draft.packingItems.length}</strong><span>Equipaje</span></div>
+            <div><strong>{locatedPlaces}</strong><span>Ya ubicados</span></div>
           </div>
           {draft.sourceFormat?.startsWith('travelcaris-ai-') && <div className="notice notice-neutral"><Check size={18} /><p><strong>Formato TravelCaris IA detectado.</strong> Los bloques estructurados se han leído con prioridad.</p></div>}
           {draft.warnings.length > 0 && <div className="notice notice-warning"><div><strong>Revisión necesaria</strong>{draft.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></div>}
@@ -306,7 +310,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label className="import-title-field">Actividad<input value={item.title} onChange={(event) => updateActivity(index, { title: event.target.value })} /></label>
               <label className="import-address-field">Dirección<input value={item.address ?? ''} onChange={(event) => updateActivity(index, { address: event.target.value })} /></label>
             </div>
-            <button className="icon-button" aria-label={`Eliminar ${item.title}`} title="Eliminar" onClick={() => onChange({ ...draft, activities: draft.activities.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+            <button className="import-remove-button danger-button" aria-label={`Eliminar ${item.title}`} onClick={() => onChange({ ...draft, activities: draft.activities.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>
         )) : <p className="muted">Sin actividades detectadas.</p>}
       </details>
@@ -320,7 +324,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label>Desde<input type="date" value={item.startDate} onChange={(event) => updateAccommodation(index, { startDate: event.target.value })} /></label>
               <label>Hasta<input type="date" value={item.endDate} onChange={(event) => updateAccommodation(index, { endDate: event.target.value })} /></label>
             </div>
-            <button className="icon-button" aria-label={`Eliminar ${item.name}`} title="Eliminar" onClick={() => onChange({ ...draft, accommodations: draft.accommodations.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+            <button className="import-remove-button danger-button" aria-label={`Eliminar ${item.name}`} onClick={() => onChange({ ...draft, accommodations: draft.accommodations.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>
         )) : <p className="muted">Sin alojamientos detectados.</p>}
       </details>
@@ -334,7 +338,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label>Salida<input type="time" value={item.scheduledDepartureTime ?? ''} onChange={(event) => updateFlight(index, { scheduledDepartureTime: event.target.value })} /></label>
               <label>Llegada<input type="time" value={item.scheduledArrivalTime ?? ''} onChange={(event) => updateFlight(index, { scheduledArrivalTime: event.target.value })} /></label>
             </div>
-            <button className="icon-button" aria-label={`Eliminar vuelo ${item.flightNumber}`} title="Eliminar" onClick={() => onChange({ ...draft, flights: draft.flights.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+            <button className="import-remove-button danger-button" aria-label={`Eliminar vuelo ${item.flightNumber}`} onClick={() => onChange({ ...draft, flights: draft.flights.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>
         )) : <p className="muted">Sin vuelos detectados.</p>}
       </details>
@@ -347,7 +351,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label>Fecha<input type="date" value={item.date} onChange={(event) => updateReminder(index, { date: event.target.value })} /></label>
               <label>Hora<input type="time" value={item.time} onChange={(event) => updateReminder(index, { time: event.target.value })} /></label>
             </div>
-            <button className="icon-button" aria-label={`Eliminar recordatorio ${item.title}`} title="Eliminar" onClick={() => onChange({ ...draft, reminders: draft.reminders.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+            <button className="import-remove-button danger-button" aria-label={`Eliminar recordatorio ${item.title}`} onClick={() => onChange({ ...draft, reminders: draft.reminders.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>
         )) : <p className="muted">Sin recordatorios detectados.</p>}
       </details>
@@ -361,7 +365,7 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label>Persona<input value={item.person} onChange={(event) => updatePacking(index, { person: event.target.value })} /></label>
               <label>Cantidad<input type="number" min="1" value={item.quantity} onChange={(event) => updatePacking(index, { quantity: Number(event.target.value) || 1 })} /></label>
             </div>
-            <button className="icon-button" aria-label={`Eliminar ${item.title} del equipaje importado`} title="Eliminar" onClick={() => onChange({ ...draft, packingItems: draft.packingItems.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+            <button className="import-remove-button danger-button" aria-label={`Eliminar ${item.title} del equipaje importado`} onClick={() => onChange({ ...draft, packingItems: draft.packingItems.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>
         )) : <p className="muted">Sin elementos de equipaje detectados.</p>}
       </details>
