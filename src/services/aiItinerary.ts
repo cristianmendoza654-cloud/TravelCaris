@@ -5,16 +5,21 @@ export interface AiItineraryBrief {
   endDate: string;
   travellers: string;
   budget: string;
+  destinationCurrency: string;
+  travellerCurrency: string;
   pace: 'Tranquilo' | 'Equilibrado' | 'Intenso';
   interests: string;
   accommodation: string;
   transport: string;
   accessibility: string;
   food: string;
+  preparations: string;
+  packing: string;
   notes: string;
 }
 
-export const travelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V1';
+export const travelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V2';
+export const legacyTravelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V1';
 
 export function buildAiItineraryPrompt(brief: AiItineraryBrief) {
   const details = [
@@ -23,12 +28,16 @@ export function buildAiItineraryPrompt(brief: AiItineraryBrief) {
     ['Fechas', dateRange(brief.startDate, brief.endDate)],
     ['Viajeros', brief.travellers],
     ['Presupuesto', brief.budget],
+    ['Moneda del destino', brief.destinationCurrency],
+    ['Moneda del viajero', brief.travellerCurrency],
     ['Ritmo', brief.pace],
     ['Intereses', brief.interests],
     ['Alojamiento o zona', brief.accommodation],
     ['Transporte previsto', brief.transport],
     ['Movilidad y accesibilidad', brief.accessibility],
     ['Alimentación', brief.food],
+    ['Preparativos o fechas que recordar', brief.preparations],
+    ['Equipaje especial', brief.packing],
     ['Peticiones del viajero', brief.notes],
   ].map(([label, value]) => `- ${label}: ${value.trim() || 'Sin indicar'}`).join('\n');
 
@@ -46,7 +55,7 @@ Cuando tengas las respuestas necesarias, crea un itinerario realista por días. 
 FASE 3: DOCUMENTO FINAL
 Entrega un archivo PDF descargable, en español, con diseño claro y texto seleccionable. Incluye primero una versión cómoda para leer: resumen del viaje, itinerario diario, alojamientos, vuelos, presupuesto orientativo, reservas pendientes y fuentes que conviene verificar.
 
-Al final del PDF añade un anexo de texto en una sola columna. Debe comenzar exactamente por ${travelCarisAiFormat}. No uses tablas, viñetas, columnas ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
+Al final del PDF añade un anexo de texto en una sola columna. Debe comenzar exactamente por ${travelCarisAiFormat}. No uses tablas, viñetas, columnas ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y códigos de moneda ISO de tres letras. Incluye recordatorios solo cuando tengan una fecha útil y elementos de equipaje concretos, sin inventar necesidades. Usa una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
 
 FORMATO EXACTO DEL ANEXO
 ${travelCarisAiFormat}
@@ -56,6 +65,11 @@ DESTINO: Ciudad o zona principal
 PAIS: País
 INICIO: YYYY-MM-DD
 FIN: YYYY-MM-DD
+DESCRIPCION: Resumen inspirador y práctico en una sola línea
+VIAJEROS: Personas separadas por punto y coma, sin datos privados
+MONEDA_DESTINO: Código ISO de tres letras
+MONEDA_VIAJERO: Código ISO de tres letras
+PRESUPUESTO: Número sin símbolo en la moneda del destino
 
 [ALOJAMIENTO]
 NOMBRE: Nombre sin referencia de reserva
@@ -86,7 +100,7 @@ RESERVA: No necesaria, Recomendada, Necesaria, Pendiente o Reservada
 ENLACE_OFICIAL: URL oficial
 ENLACE_RESERVA: URL de reserva, si procede
 PRECIO_TOTAL: Número sin símbolo
-MONEDA: EUR o GBP
+MONEDA: Código ISO de tres letras
 ENTORNO: Interior, Exterior, Mixto o Sin indicar
 PLAN_LLUVIA: Una sola línea
 ACCESIBILIDAD: Una sola línea
@@ -107,9 +121,24 @@ EQUIPAJE: Una sola línea, si se conoce
 NOTAS: Una sola línea sin localizadores ni billetes
 [FIN_VUELO]
 
+[RECORDATORIO]
+TITULO: Acción concreta que debe recordarse
+FECHA: YYYY-MM-DD
+HORA: HH:MM
+NOTAS: Una sola línea
+[FIN_RECORDATORIO]
+
+[EQUIPAJE]
+LISTA: Equipaje, Documentación, Medicamentos, Bebé, Niños, Tecnología, Antes de salir o Durante el viaje
+ELEMENTO: Objeto o tarea concreta
+PERSONA: Persona responsable, si se conoce
+CANTIDAD: Número entero positivo
+NOTAS: Una sola línea
+[FIN_EQUIPAJE]
+
 [FIN_TRAVELCARIS]
 
-Antes de entregar el PDF, comprueba que todas las actividades estén dentro de las fechas del viaje, que no existan horas imposibles ni bloques duplicados y que el anexo conserve exactamente estas etiquetas.`;
+Antes de entregar el PDF, comprueba que todas las actividades y recordatorios estén dentro de un intervalo razonable para el viaje, que no existan horas imposibles ni bloques duplicados y que el anexo conserve exactamente estas etiquetas.`;
 }
 
 function dateRange(startDate: string, endDate: string) {

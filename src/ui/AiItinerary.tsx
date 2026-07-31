@@ -1,6 +1,6 @@
 import { Copy, ExternalLink, FileUp, ShieldCheck, Sparkles, WandSparkles, X } from 'lucide-react';
 import { useState } from 'react';
-import type { Trip } from '../domain/types';
+import { currencyCodes, type Trip } from '../domain/types';
 import { buildAiItineraryPrompt, type AiItineraryBrief } from '../services/aiItinerary';
 
 interface AiItineraryPanelProps {
@@ -17,14 +17,18 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
     startDate: trip.startDate,
     endDate: trip.endDate,
     travellers: trip.travellers.join(', '),
-    budget: '',
+    budget: trip.budget ? `${trip.budget} ${trip.currency}` : '',
+    destinationCurrency: trip.currency,
+    travellerCurrency: trip.secondaryCurrency,
     pace: 'Equilibrado',
     interests: '',
     accommodation: '',
     transport: '',
     accessibility: '',
     food: '',
-    notes: '',
+    preparations: '',
+    packing: '',
+    notes: trip.description,
   });
   const [prompt, setPrompt] = useState('');
   const [error, setError] = useState('');
@@ -78,12 +82,20 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
         <label>Intereses<input value={brief.interests} onChange={(event) => update('interests', event.target.value)} placeholder="Cultura, gastronomía, ocio..." /></label>
       </div>
       <div className="two-cols">
+        <label>Moneda del destino<select value={brief.destinationCurrency} onChange={(event) => update('destinationCurrency', event.target.value)}>{currencyCodes.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+        <label>Moneda del viajero<select value={brief.travellerCurrency} onChange={(event) => update('travellerCurrency', event.target.value)}>{currencyCodes.map((currency) => <option key={currency}>{currency}</option>)}</select></label>
+      </div>
+      <div className="two-cols">
         <label>Alojamiento o zona<input value={brief.accommodation} onChange={(event) => update('accommodation', event.target.value)} /></label>
         <label>Transporte previsto<input value={brief.transport} onChange={(event) => update('transport', event.target.value)} placeholder="Vuelos, tren, coche..." /></label>
       </div>
       <div className="two-cols">
         <label>Movilidad y accesibilidad<input value={brief.accessibility} onChange={(event) => update('accessibility', event.target.value)} /></label>
         <label>Alimentación<input value={brief.food} onChange={(event) => update('food', event.target.value)} placeholder="Alergias, preferencias..." /></label>
+      </div>
+      <div className="two-cols">
+        <label>Preparativos y fechas<input value={brief.preparations} onChange={(event) => update('preparations', event.target.value)} placeholder="Reservas, visados, check-in..." /></label>
+        <label>Equipaje especial<input value={brief.packing} onChange={(event) => update('packing', event.target.value)} placeholder="Medicamentos, bebé, tecnología..." /></label>
       </div>
       <label>Qué quieres hacer en este viaje<textarea value={brief.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Prioridades, planes imprescindibles, horarios, cosas que quieres evitar y cualquier petición especial" /></label>
       {error && <p className="error">{error}</p>}

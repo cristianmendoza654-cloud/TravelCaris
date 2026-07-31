@@ -208,4 +208,37 @@ describe('storage repository', () => {
     expect(snapshot.flights[0].flightNumber).toBe('IB1234');
     expect(snapshot.documents).toEqual([]);
   });
+
+  it('guarda el perfil, recordatorios y equipaje importados desde IA V2', async () => {
+    await restoreInitialData();
+    const draft = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V2
+[VIAJE]
+NOMBRE: Viaje familiar a Roma
+DESTINO: Roma
+PAIS: Italia
+INICIO: 2027-09-03
+FIN: 2027-09-05
+DESCRIPCION: Un viaje tranquilo de historia y gastronomía
+VIAJEROS: 2 adultos; Leo
+MONEDA_DESTINO: EUR
+MONEDA_VIAJERO: GBP
+PRESUPUESTO: 900
+[RECORDATORIO]
+TITULO: Reservar entradas
+FECHA: 2027-08-03
+HORA: 10:00
+[FIN_RECORDATORIO]
+[EQUIPAJE]
+LISTA: Tecnología
+ELEMENTO: Cargador
+PERSONA: Leo
+CANTIDAD: 2
+[FIN_EQUIPAJE]
+[FIN_TRAVELCARIS]`]);
+    await applyPdfImport(draft, 'replace');
+    const snapshot = await getSnapshot();
+    expect(snapshot.activeTrip).toMatchObject({ destination: 'Roma', travellers: ['2 adultos', 'Leo'], secondaryCurrency: 'GBP', budget: 900 });
+    expect(snapshot.reminders[0].title).toBe('Reservar entradas');
+    expect(snapshot.packingItems[0]).toMatchObject({ title: 'Cargador', person: 'Leo', quantity: 2 });
+  });
 });

@@ -1,15 +1,17 @@
-import type { Accommodation, Activity, Flight, Trip } from '../domain/types';
-import { categories } from '../domain/types';
-import { travelCarisAiFormat } from './aiItinerary';
+import type { Accommodation, Activity, Flight, PackingItem, Reminder, Trip } from '../domain/types';
+import { categories, currencyCodes } from '../domain/types';
+import { legacyTravelCarisAiFormat, travelCarisAiFormat } from './aiItinerary';
 
 export interface PdfImportDraft {
   fileName: string;
-  trip: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate'>;
+  trip: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate' | 'description' | 'travellers' | 'currency' | 'secondaryCurrency' | 'budget'>;
   activities: Array<Partial<Activity> & Pick<Activity, 'title' | 'day'>>;
   accommodations: Array<Omit<Accommodation, 'id' | 'tripId' | 'createdAt' | 'updatedAt'>>;
   flights: Array<Partial<Flight> & Pick<Flight, 'flightNumber' | 'scheduledDate'>>;
+  reminders: Array<Omit<Reminder, 'id' | 'tripId' | 'notifiedAt'>>;
+  packingItems: Array<Omit<PackingItem, 'id' | 'tripId' | 'order'>>;
   warnings: string[];
-  sourceFormat?: 'travelcaris-ai-v1' | 'general';
+  sourceFormat?: 'travelcaris-ai-v2' | 'travelcaris-ai-v1' | 'general';
 }
 
 const months: Record<string, number> = {
@@ -189,10 +191,17 @@ export function parseTravelDocumentText(pages: string[], fileName = 'viaje.pdf')
       country: inferCountry(safeDestination),
       startDate,
       endDate,
+      description: '',
+      travellers: [],
+      currency: 'EUR',
+      secondaryCurrency: 'EUR',
+      budget: 0,
     },
     activities,
     accommodations,
     flights,
+    reminders: [],
+    packingItems: [],
     warnings,
     sourceFormat: 'general',
   };
@@ -205,11 +214,11 @@ export function validatePdfImportDraft(draft: PdfImportDraft) {
   if (!validIsoDate(draft.trip.startDate) || !validIsoDate(draft.trip.endDate) || draft.trip.endDate < draft.trip.startDate) {
     errors.push('Las fechas del viaje no son válidas.');
   }
-  if (draft.activities.length > 500 || draft.accommodations.length > 50 || draft.flights.length > 50) {
+  if (draft.activities.length > 500 || draft.accommodations.length > 50 || draft.flights.length > 50 || draft.reminders.length > 100 || draft.packingItems.length > 300) {
     errors.push('El PDF contiene más elementos de los que se pueden importar con seguridad.');
   }
-  if (!draft.activities.length && !draft.accommodations.length && !draft.flights.length) {
-    errors.push('El PDF no contiene actividades, alojamientos ni vuelos para importar.');
+  if (!draft.activities.length && !draft.accommodations.length && !draft.flights.length && !draft.reminders.length && !draft.packingItems.length) {
+    errors.push('El PDF no contiene datos de planificación para importar.');
   }
   draft.activities.forEach((activity, index) => {
     if (!activity.title?.trim()) errors.push(`La actividad ${index + 1} no tiene título.`);
@@ -228,6 +237,14 @@ export function validatePdfImportDraft(draft: PdfImportDraft) {
     if (!flight.flightNumber?.trim()) errors.push(`El vuelo ${index + 1} no tiene número.`);
     if (!validIsoDate(flight.scheduledDate)) errors.push(`El vuelo ${index + 1} tiene una fecha no válida.`);
   });
+  draft.reminders.forEach((reminder, index) => {
+    if (!reminder.title.trim()) errors.push(`El recordatorio ${index + 1} no tiene título.`);
+    if (!validIsoDate(reminder.date) || !validTime(reminder.time)) errors.push(`El recordatorio ${index + 1} tiene fecha u hora no válida.`);
+  });
+  draft.packingItems.forEach((item, index) => {
+    if (!item.title.trim()) errors.push(`El elemento de equipaje ${index + 1} no tiene nombre.`);
+    if (item.quantity < 1) errors.push(`El elemento de equipaje ${index + 1} tiene una cantidad no válida.`);
+  });
   return [...new Set(errors)];
 }
 
@@ -237,8 +254,9 @@ interface StructuredSection {
 }
 
 function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImportDraft | null {
-  const markerIndex = lines.findIndex((line) => fold(line).toUpperCase() === travelCarisAiFormat);
+  const markerIndex = lines.findIndex((line) => [travelCarisAiFormat, legacyTravelCarisAiFormat].includes(fold(line).toUpperCase()));
   if (markerIndex < 0) return null;
+  const sourceFormat = fold(lines[markerIndex]).toUpperCase() === travelCarisAiFormat ? 'travelcaris-ai-v2' : 'travelcaris-ai-v1';
 
   const sections = structuredSections(lines.slice(markerIndex + 1));
   const tripSection = sections.find((section) => section.name === 'VIAJE');
@@ -266,6 +284,14 @@ function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImpor
     .filter((section) => section.name === 'VUELO')
     .map((section) => structuredFlight(section, startDate))
     .filter((flight): flight is PdfImportDraft['flights'][number] => Boolean(flight));
+  const reminders = sections
+    .filter((section) => section.name === 'RECORDATORIO')
+    .map((section) => structuredReminder(section))
+    .filter((reminder): reminder is PdfImportDraft['reminders'][number] => Boolean(reminder));
+  const packingItems = sections
+    .filter((section) => section.name === 'EQUIPAJE')
+    .map((section) => structuredPackingItem(section))
+    .filter((item): item is PdfImportDraft['packingItems'][number] => Boolean(item));
 
   if (!activities.length) warnings.push('El anexo no contiene actividades válidas.');
   if (activities.some((activity) => activity.day < startDate || activity.day > endDate)) {
@@ -282,12 +308,19 @@ function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImpor
       country: field(tripSection, 'PAIS') || inferCountry(destination),
       startDate,
       endDate,
+      description: field(tripSection, 'DESCRIPCION'),
+      travellers: field(tripSection, 'VIAJEROS').split(';').map((value) => value.trim()).filter(Boolean),
+      currency: supportedCurrency(field(tripSection, 'MONEDA_DESTINO')),
+      secondaryCurrency: supportedCurrency(field(tripSection, 'MONEDA_VIAJERO')),
+      budget: positiveNumber(field(tripSection, 'PRESUPUESTO')),
     },
     activities: uniqueBy(activities, (item) => `${item.day}|${item.startTime}|${fold(item.title)}`),
     accommodations: uniqueBy(accommodations, (item) => `${fold(item.name)}|${fold(item.address)}`),
     flights: uniqueBy(flights, (item) => `${item.flightNumber}|${item.scheduledDate}`),
+    reminders: uniqueBy(reminders, (item) => `${item.date}|${item.time}|${fold(item.title)}`),
+    packingItems: uniqueBy(packingItems, (item) => `${item.list}|${item.person}|${fold(item.title)}`),
     warnings,
-    sourceFormat: 'travelcaris-ai-v1',
+    sourceFormat,
   };
 }
 
@@ -333,7 +366,7 @@ function structuredActivity(section: StructuredSection, fallbackDate: string): P
   if (!title) return null;
   const categoryValue = field(section, 'CATEGORIA');
   const category = categories.find((item) => fold(item).toUpperCase() === fold(categoryValue).toUpperCase()) ?? inferCategory(`${title} ${categoryValue}`);
-  const currency = field(section, 'MONEDA').toUpperCase() === 'GBP' ? 'GBP' : 'EUR';
+  const currency = supportedCurrency(field(section, 'MONEDA'));
   const total = positiveNumber(field(section, 'PRECIO_TOTAL'));
   const reservation = reservationStatus(field(section, 'RESERVA'));
   const lat = coordinate(field(section, 'LATITUD'), -90, 90);
@@ -428,6 +461,30 @@ function structuredFlight(section: StructuredSection, fallbackDate: string): Pdf
     officialTrackingUrl: safeHttpUrl(field(section, 'ENLACE_OFICIAL')) || inferAirlineUrl(flightNumber),
     departureAirportUrl: airportOfficialUrls[departureIata] ?? '',
     arrivalAirportUrl: airportOfficialUrls[arrivalIata] ?? '',
+  };
+}
+
+function structuredReminder(section: StructuredSection): PdfImportDraft['reminders'][number] | null {
+  const title = field(section, 'TITULO');
+  const date = field(section, 'FECHA');
+  const time = field(section, 'HORA');
+  if (!title || !validIsoDate(date) || !validTime(time)) return null;
+  return { title, date, time, notes: field(section, 'NOTAS'), done: false };
+}
+
+function structuredPackingItem(section: StructuredSection): PdfImportDraft['packingItems'][number] | null {
+  const title = field(section, 'ELEMENTO');
+  if (!title) return null;
+  const requestedList = field(section, 'LISTA');
+  const lists: PackingItem['list'][] = ['Equipaje', 'Documentación', 'Medicamentos', 'Bebé', 'Niños', 'Tecnología', 'Antes de salir', 'Durante el viaje'];
+  const list = lists.find((value) => fold(value).toUpperCase() === fold(requestedList).toUpperCase()) ?? 'Equipaje';
+  return {
+    list,
+    title,
+    done: false,
+    person: field(section, 'PERSONA'),
+    quantity: positiveInteger(field(section, 'CANTIDAD')) || 1,
+    notes: field(section, 'NOTAS'),
   };
 }
 
@@ -728,6 +785,11 @@ function positiveNumber(value: string) {
 
 function positiveInteger(value: string) {
   return Math.round(positiveNumber(value));
+}
+
+function supportedCurrency(value: string) {
+  const normalized = value.trim().toUpperCase();
+  return currencyCodes.includes(normalized as (typeof currencyCodes)[number]) ? normalized : 'EUR';
 }
 
 function coordinate(value: string, min: number, max: number) {

@@ -127,10 +127,11 @@ export function ExploreView({ snapshot, refresh, notify }: ExploreProps) {
 
   return (
     <section className="page-stack">
-      <section className="hero">
+      <section className="hero" style={snapshot.activeTrip.coverImage ? { backgroundImage: `linear-gradient(rgba(17, 49, 55, 0.08), rgba(17, 49, 55, 0.76)), url("${snapshot.activeTrip.coverImage.replace(/"/g, '%22')}")` } : undefined}>
         <div>
           <h2>Explorar</h2>
           <p>{context.label}</p>
+          {snapshot.activeTrip.coverImageAttribution && <small className="hero-credit">{snapshot.activeTrip.coverImageSourceUrl ? <a href={snapshot.activeTrip.coverImageSourceUrl} target="_blank" rel="noreferrer">{snapshot.activeTrip.coverImageAttribution}</a> : snapshot.activeTrip.coverImageAttribution}</small>}
         </div>
         <button className="secondary" onClick={() => setShowProviders((value) => !value)}>
           <Settings2 size={18} /> Proveedores

@@ -23,7 +23,7 @@ Día 2 · Sábado 4 · Museos
 describe('importación local de itinerarios PDF', () => {
   it('detecta viaje, actividades, alojamiento y vuelos', () => {
     const result = parseTravelDocumentText(sample, 'viaje-ficticio.pdf');
-    expect(result.trip).toEqual({
+    expect(result.trip).toMatchObject({
       name: 'Viaje a Roma',
       destination: 'Roma',
       country: 'Italia',
@@ -36,6 +36,39 @@ describe('importación local de itinerarios PDF', () => {
     expect(result.flights.map((item) => item.flightNumber)).toEqual(['IB1234', 'IB4321']);
     expect(result.flights[0].officialTrackingUrl).toMatch(/^https:\/\//);
     expect(result.flights[0].departureAirportUrl).toMatch(/^https:\/\//);
+  });
+
+  it('importa el perfil, recordatorios y equipaje del formato V2', () => {
+    const result = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V2
+[VIAJE]
+NOMBRE: Roma en familia
+DESTINO: Roma
+PAIS: Italia
+INICIO: 2027-09-03
+FIN: 2027-09-05
+DESCRIPCION: Historia, plazas y comidas sin prisas
+VIAJEROS: 2 adultos; niño de 8 años
+MONEDA_DESTINO: EUR
+MONEDA_VIAJERO: GBP
+PRESUPUESTO: 950
+[RECORDATORIO]
+TITULO: Reservar el Coliseo
+FECHA: 2027-08-03
+HORA: 09:00
+NOTAS: Revisar la web oficial
+[FIN_RECORDATORIO]
+[EQUIPAJE]
+LISTA: Tecnología
+ELEMENTO: Cargador portátil
+PERSONA: Todos
+CANTIDAD: 2
+NOTAS: Cargar la noche anterior
+[FIN_EQUIPAJE]
+[FIN_TRAVELCARIS]`]);
+    expect(result.sourceFormat).toBe('travelcaris-ai-v2');
+    expect(result.trip).toMatchObject({ travellers: ['2 adultos', 'niño de 8 años'], secondaryCurrency: 'GBP', budget: 950 });
+    expect(result.reminders[0]).toMatchObject({ title: 'Reservar el Coliseo', date: '2027-08-03', time: '09:00' });
+    expect(result.packingItems[0]).toMatchObject({ title: 'Cargador portátil', list: 'Tecnología', quantity: 2 });
   });
 
   it('rechaza un documento sin texto útil', () => {

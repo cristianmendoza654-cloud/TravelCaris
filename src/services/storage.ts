@@ -44,6 +44,9 @@ export async function ensureInitialData() {
   const settings = await db.settings.get('settings');
   if (settings?.initialized && (await db.trips.count()) > 0) {
     if ((await db.searchProviders.count()) === 0) await db.searchProviders.bulkPut(clone(initialSearchProviders));
+    const trips = await db.trips.toArray();
+    const missingBudget = trips.filter((trip) => !Number.isFinite(trip.budget));
+    if (missingBudget.length) await db.trips.bulkPut(missingBudget.map((trip) => ({ ...trip, budget: settings.budgetGbp ?? 0 })));
     return;
   }
   await restoreInitialData();
@@ -67,7 +70,11 @@ export async function restoreInitialData() {
 export async function getSnapshot() {
   await ensureInitialData();
   const settings = (await db.settings.get('settings')) ?? initialSettings;
-  const trips = await db.trips.orderBy('startDate').toArray();
+  const storedTrips = await db.trips.orderBy('startDate').toArray();
+  const trips = storedTrips.map((trip) => ({
+    ...trip,
+    budget: Number.isFinite(trip.budget) ? trip.budget : settings.budgetGbp ?? 0,
+  }));
   const activeTripId = trips.some((trip) => trip.id === settings.activeTripId)
     ? settings.activeTripId
     : trips[0]?.id ?? starterTripId;
@@ -389,18 +396,21 @@ export async function saveTrip(trip: Trip) {
   await db.trips.put({ ...trip, updatedAt: new Date().toISOString() });
 }
 
-export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate'> & Partial<Pick<Trip, 'currency' | 'secondaryCurrency'>>) {
+export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'country' | 'startDate' | 'endDate'> & Partial<Pick<Trip, 'currency' | 'secondaryCurrency' | 'description' | 'travellers' | 'budget' | 'coverImage' | 'coverImageAttribution' | 'coverImageSourceUrl'>>) {
   await ensureInitialData();
   const now = new Date().toISOString();
   const trip: Trip = {
     ...input,
     id: uuid(),
-    coverImage: '',
-    description: '',
+    coverImage: input.coverImage ?? '',
+    coverImageAttribution: input.coverImageAttribution,
+    coverImageSourceUrl: input.coverImageSourceUrl,
+    description: input.description ?? '',
     currency: input.currency ?? 'EUR',
     secondaryCurrency: input.secondaryCurrency ?? 'EUR',
     exchangeRate: 1,
-    travellers: [],
+    budget: input.budget ?? 0,
+    travellers: input.travellers ?? [],
     status: 'Próximo',
     createdAt: now,
     updatedAt: now,
@@ -459,16 +469,19 @@ export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'ne
   const currentId = await activeTripId();
   const currentTrip = await db.trips.get(currentId);
   const detectedCurrency = mostCommonImportedCurrency(data);
+  const destinationCurrency = data.sourceFormat === 'general'
+    ? detectedCurrency ?? currentTrip?.currency ?? 'EUR'
+    : data.trip.currency || detectedCurrency || currentTrip?.currency || 'EUR';
   const importedTrip = mode === 'new'
-    ? await createTrip({ ...data.trip, currency: detectedCurrency ?? 'EUR', secondaryCurrency: 'EUR' })
+    ? await createTrip({ ...data.trip, currency: destinationCurrency, secondaryCurrency: data.trip.secondaryCurrency || 'EUR' })
     : {
         ...(currentTrip ?? initialTrips[0]),
         ...data.trip,
-        currency: detectedCurrency ?? currentTrip?.currency ?? initialTrips[0].currency,
-        exchangeRate: detectedCurrency && detectedCurrency !== currentTrip?.currency ? 1 : currentTrip?.exchangeRate ?? 1,
-        exchangeRateDate: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateDate,
-        exchangeRateUpdatedAt: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateUpdatedAt,
-        exchangeRateSource: detectedCurrency && detectedCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateSource,
+        currency: destinationCurrency,
+        exchangeRate: destinationCurrency !== currentTrip?.currency ? 1 : currentTrip?.exchangeRate ?? 1,
+        exchangeRateDate: destinationCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateDate,
+        exchangeRateUpdatedAt: destinationCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateUpdatedAt,
+        exchangeRateSource: destinationCurrency !== currentTrip?.currency ? undefined : currentTrip?.exchangeRateSource,
         id: currentId,
         updatedAt: new Date().toISOString(),
       };
@@ -506,6 +519,18 @@ export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'ne
     })),
   );
   for (const flight of data.flights) await createFlight({ ...flight, tripId });
+  const [existingReminders, existingPacking] = await Promise.all([
+    db.reminders.where('tripId').equals(tripId).toArray(),
+    db.packingItems.where('tripId').equals(tripId).toArray(),
+  ]);
+  const reminderKeys = new Set(existingReminders.map((item) => `${item.date}|${item.time}|${item.title.toLocaleLowerCase('es')}`));
+  const packingKeys = new Set(existingPacking.map((item) => `${item.list}|${item.person}|${item.title.toLocaleLowerCase('es')}`));
+  await db.reminders.bulkPut(data.reminders
+    .filter((item) => !reminderKeys.has(`${item.date}|${item.time}|${item.title.toLocaleLowerCase('es')}`))
+    .map((item) => ({ ...item, id: uuid(), tripId })));
+  await db.packingItems.bulkPut(data.packingItems
+    .filter((item) => !packingKeys.has(`${item.list}|${item.person}|${item.title.toLocaleLowerCase('es')}`))
+    .map((item, index) => ({ ...item, id: uuid(), tripId, order: existingPacking.length + index + 1 })));
   await selectTrip(tripId);
   return tripId;
 }
@@ -799,7 +824,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.5.0',
+    version: '3.6.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

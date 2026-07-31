@@ -17,6 +17,8 @@ export interface Trip {
   startDate: string;
   endDate: string;
   coverImage: string;
+  coverImageAttribution?: string;
+  coverImageSourceUrl?: string;
   description: string;
   currency: 'GBP' | 'EUR' | string;
   secondaryCurrency: 'GBP' | 'EUR' | string;
@@ -24,6 +26,7 @@ export interface Trip {
   exchangeRateDate?: string;
   exchangeRateUpdatedAt?: string;
   exchangeRateSource?: string;
+  budget: number;
   travellers: string[];
   status: TripStatus;
   createdAt: string;

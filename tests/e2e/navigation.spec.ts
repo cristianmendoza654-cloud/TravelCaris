@@ -57,6 +57,27 @@ test('programa, edita y exporta un recordatorio fechado', async ({ page }) => {
   expect(download.suggestedFilename()).toBe('recordatorio-reservar-entradas.ics');
 });
 
+test('personaliza el viaje y prepara equipaje por persona sin desbordar el móvil', async ({ page }) => {
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Editar', exact: true }).click();
+  const profile = page.locator('.trip-profile-editor');
+  await profile.getByLabel('Destino', { exact: true }).fill('Roma');
+  await profile.getByLabel('País').fill('Italia');
+  await profile.getByLabel('Viajeros').fill('2 adultos; Leo');
+  await profile.getByLabel('Presupuesto (EUR)').fill('900');
+  await profile.getByRole('button', { name: 'Guardar perfil' }).click();
+
+  await page.getByRole('button', { name: 'Equipaje', exact: true }).click();
+  await page.getByLabel('Nuevo elemento').fill('Cargador portátil');
+  await page.getByLabel('Lista').selectOption('Tecnología');
+  await page.getByLabel('Persona').fill('Leo');
+  await page.getByLabel('Cantidad').fill('2');
+  await page.getByRole('button', { name: 'Añadir a la lista' }).click();
+  await expect(page.getByText('2 × Cargador portátil')).toBeVisible();
+  await expect(page.getByText(/Tecnología · Leo/)).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
+});
+
 test('abre la importación privada de PDF', async ({ page }) => {
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: /principal/i });
@@ -113,11 +134,11 @@ test('prepara con IA un encargo compatible con la importación PDF', async ({ pa
   await page.getByRole('button', { name: 'Crear con IA' }).click();
 
   await expect(page.getByRole('heading', { name: /Crear itinerario con IA/i })).toBeVisible();
-  await page.getByLabel('Destino').fill('Roma');
+  await page.getByLabel('Destino', { exact: true }).fill('Roma');
   await page.getByLabel('Qué quieres hacer en este viaje').fill('Historia, parques y comida local con un ritmo tranquilo.');
   await page.getByRole('button', { name: /Preparar instrucciones/i }).click();
 
-  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V1');
+  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V2');
   await expect(page.getByRole('link', { name: 'Abrir ChatGPT' })).toHaveAttribute('href', 'https://chatgpt.com/');
   await page.getByRole('button', { name: 'Ya tengo el PDF' }).click();
   await expect(page.getByRole('heading', { name: 'Rellenar desde un PDF' })).toBeVisible();
@@ -137,7 +158,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.5.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.6.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

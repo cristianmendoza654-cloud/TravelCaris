@@ -8,12 +8,16 @@ const brief: AiItineraryBrief = {
   endDate: '2027-09-05',
   travellers: '2 adultos y 1 niño de 8 años',
   budget: '900 EUR sin vuelos',
+  destinationCurrency: 'EUR',
+  travellerCurrency: 'EUR',
   pace: 'Equilibrado',
   interests: 'Historia y gastronomía',
   accommodation: 'Centro histórico',
   transport: 'A pie y transporte público',
   accessibility: '',
   food: 'Sin restricciones',
+  preparations: 'Reservar el Coliseo un mes antes',
+  packing: 'Medicamentos y cargadores',
   notes: 'Una tarde tranquila',
 };
 
@@ -24,6 +28,8 @@ describe('encargo de itinerario con IA', () => {
     expect(prompt).toContain('una sola ronda de preguntas');
     expect(prompt).toContain(travelCarisAiFormat);
     expect(prompt).toContain('[ACTIVIDAD]');
+    expect(prompt).toContain('[RECORDATORIO]');
+    expect(prompt).toContain('[EQUIPAJE]');
     expect(prompt).toContain('[FIN_TRAVELCARIS]');
   });
 

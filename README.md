@@ -24,11 +24,11 @@ El build se genera en `dist`.
 
 ## Funciones principales
 
-- Gestión de varios viajes, con viaje activo y estados Próximo, En curso, Finalizado y Archivado.
-- Importación local de PDF con vista previa editable para corregir o eliminar destino, fechas, actividades, alojamientos y vuelos antes de guardar.
-- Creador de encargos para ChatGPT sin API: entrevista guiada, instrucciones de planificación y anexo `TRAVELCARIS-AI-PDF-V1` optimizado para volver a importar el PDF.
-- Inicio con días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
-- Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje y recordatorios.
+- Gestión de varios viajes, con perfil, portada propia o automática, viajeros, presupuesto, viaje activo y estados Próximo, En curso, Finalizado y Archivado.
+- Importación local de PDF con vista previa editable para corregir o eliminar perfil, actividades, alojamientos, vuelos, recordatorios y equipaje antes de guardar.
+- Creador de encargos para ChatGPT sin API: entrevista guiada, instrucciones de planificación y anexo `TRAVELCARIS-AI-PDF-V2` optimizado para volver a importar perfil, itinerario, recordatorios y equipaje.
+- Inicio con preparación adaptativa, días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
+- Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje familiar por persona y recordatorios.
 - Moneda del destino y del viajero por viaje, con último cambio publicado, equivalencias en precios y gastos, y conservación del valor para uso sin conexión.
 - Recordatorios con fecha, hora, edición, aviso dentro de la PWA y exportación `.ics` al calendario nativo.
 - Fotografías automáticas de actividades y alojamientos mediante Wikimedia Commons, guardadas localmente con autor, licencia y enlace de procedencia; también admite fotos propias.
@@ -176,7 +176,7 @@ El repositorio no incluye ningún itinerario, alojamiento, vuelo, reserva o docu
 
 La lectura de PDF se realiza en el navegador mediante PDF.js. El archivo no se envía a Vercel ni a servicios de inteligencia artificial y no se guarda automáticamente en Documentos. Antes de importar se muestra una vista previa editable; los horarios, precios y reservas detectados deben verificarse en sus fuentes oficiales. Los PDF escaneados sin una capa de texto requieren OCR previo.
 
-El bloque **Crear con IA** prepara instrucciones localmente y abre ChatGPT solo cuando el usuario lo decide. TravelCaris no llama a ninguna API y no necesita variables de entorno. El encargo pide a ChatGPT que haga una ronda de preguntas si faltan datos, cree un PDF legible y añada un anexo estructurado `TRAVELCARIS-AI-PDF-V1`. No deben compartirse localizadores, billetes, pasaportes, datos bancarios ni documentos privados.
+El bloque **Crear con IA** prepara instrucciones localmente y abre ChatGPT solo cuando el usuario lo decide. TravelCaris no llama a ninguna API y no necesita variables de entorno. El encargo pide a ChatGPT que haga una ronda de preguntas si faltan datos, cree un PDF legible y añada un anexo estructurado `TRAVELCARIS-AI-PDF-V2`. El importador sigue aceptando los anexos V1 anteriores. No deben compartirse localizadores, billetes, pasaportes, datos bancarios ni documentos privados.
 
 Safari puede liberar almacenamiento si el dispositivo necesita espacio o la web permanece mucho tiempo sin uso. TravelCaris no sustituye los sistemas oficiales y no debe ser la única copia de documentos esenciales.
 

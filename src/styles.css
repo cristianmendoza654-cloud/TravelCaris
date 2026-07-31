@@ -43,9 +43,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .status-pill, .meta-row span { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 0.78rem; background: var(--surface); white-space: nowrap; }
 .main-content { width: min(920px, 100%); margin: 0 auto; padding: 16px; }
 .page-stack { display: grid; gap: 14px; }
-.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 168px; padding: 22px; border-radius: 8px; color: white; background: linear-gradient(rgba(17, 49, 55, 0.08), rgba(17, 49, 55, 0.76)), url('/travel-hero.png'); background-position: center; background-size: cover; box-shadow: var(--shadow); }
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 168px; padding: 22px; border-radius: 8px; color: white; background-image: linear-gradient(rgba(17, 49, 55, 0.08), rgba(17, 49, 55, 0.76)), var(--hero-image, url('/travel-hero.png')); background-position: center; background-size: cover; box-shadow: var(--shadow); }
 .hero h2 { margin: 0; font-size: 2.75rem; line-height: 1; }
 .hero p { margin: 8px 0 0; max-width: 520px; color: rgba(255,255,255,0.9); }
+.hero-credit { display: block; margin-top: 9px; color: rgba(255,255,255,0.76); font-size: 0.65rem; }
+.hero-credit a { color: inherit; }
 .highlight-panel, .next-card, .form-card, .info-band, .danger-zone { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; box-shadow: 0 5px 18px rgba(23, 50, 56, 0.06); }
 .highlight-panel h2, .next-card h2, .form-card h2, .form-card h3 { margin: 0 0 8px; }
 .timeline { display: grid; gap: 10px; }
@@ -72,6 +74,9 @@ button:active, .external-button:active { transform: translateY(1px); }
 .tabs button { flex: 0 0 auto; }
 .tabs .selected { background: var(--brand); color: white; border-color: var(--brand); }
 .horizontal { margin-inline: -16px; padding-inline: 16px; }
+.more-tabs { width: 100%; padding: 4px 1px 8px; scrollbar-width: none; scroll-snap-type: x proximity; }
+.more-tabs::-webkit-scrollbar { display: none; }
+.more-tabs button { display: grid; grid-template-columns: auto auto; scroll-snap-align: start; }
 label { display: grid; gap: 6px; font-weight: 750; }
 input, select, textarea { width: 100%; min-height: 44px; border-radius: 8px; border: 1px solid var(--line); padding: 10px 12px; background: color-mix(in srgb, var(--surface) 88%, white); color: var(--ink); }
 textarea { min-height: 86px; resize: vertical; }
@@ -79,7 +84,9 @@ textarea { min-height: 86px; resize: vertical; }
 .form-card { display: grid; gap: 12px; }
 .checkbox { grid-template-columns: auto 1fr auto; align-items: center; }
 .checkbox input, .check-row input { width: 22px; min-height: 22px; }
-.check-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 10px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.check-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 13px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.check-row span { min-width: 0; }
+.check-row span small { display: block; margin-top: 3px; color: var(--muted); overflow-wrap: anywhere; }
 .check-row button { width: 40px; height: 40px; padding: 0; }
 .danger-zone { display: grid; gap: 10px; border-color: color-mix(in srgb, #b52f37 35%, var(--line)); }
 .danger-zone h3, .danger-zone p { margin: 0; }
@@ -165,6 +172,22 @@ textarea { min-height: 86px; resize: vertical; }
 .home-summary strong { display: block; margin-top: 5px; font-size: 1.12rem; overflow-wrap: anywhere; }
 .quick-links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .quick-links a { min-height: 68px; display: grid; place-items: center; gap: 5px; padding: 8px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 0.78rem; font-weight: 800; }
+.readiness-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid var(--line); border-top: 4px solid var(--brand); border-radius: 8px; background: var(--surface); box-shadow: 0 8px 24px rgba(22, 52, 59, 0.06); }
+.readiness-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.readiness-heading h2 { margin: 0; font-size: 1.18rem; }
+.readiness-heading > strong { color: var(--brand); font-size: 1.45rem; }
+.readiness-progress { height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface-alt); }
+.readiness-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--green)); transition: width 280ms ease; }
+.readiness-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.readiness-steps a { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); text-decoration: none; }
+.readiness-steps a > span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.readiness-steps a > strong { color: var(--brand); font-size: 0.72rem; }
+.readiness-steps a.done { color: var(--muted); background: var(--surface-alt); }
+.readiness-steps a.done > strong { color: var(--green); }
+.itinerary-empty, .flight-empty { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 20px; border: 1px dashed color-mix(in srgb, var(--brand) 55%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--brand) 5%, var(--surface)); }
+.itinerary-empty > svg, .flight-empty > svg { color: var(--brand); }
+.itinerary-empty h2, .itinerary-empty p, .flight-empty h3, .flight-empty p { margin: 0; }
+.itinerary-empty p:not(.eyebrow), .flight-empty p:not(.eyebrow) { margin-top: 5px; color: var(--muted); }
 
 .flight-hero { min-height: 180px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 24px; border-radius: 8px; color: white; background: #174a57 url('/travel-hero.png') center / cover no-repeat; box-shadow: var(--shadow); position: relative; overflow: hidden; }
 .flight-hero::before { content: ''; position: absolute; inset: 0; background: rgba(8, 38, 44, 0.72); }
@@ -223,6 +246,7 @@ textarea { min-height: 86px; resize: vertical; }
 .critical-warnings, .impact-panel, .conflict-panel { padding: 16px; border: 1px solid var(--line); border-left: 5px solid #b52f37; border-radius: 8px; background: var(--surface); }
 .critical-warnings h3, .impact-panel h3, .conflict-panel h3 { margin: 0 0 8px; }
 .critical-warnings li, .impact-panel li { margin: 7px 0; }
+.critical-warnings summary { cursor: pointer; font-weight: 850; }
 .impact-panel { border-left-color: var(--brand); }
 .conflict-panel { border-left-color: #bd7b13; }
 .conflict-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -235,6 +259,15 @@ textarea { min-height: 86px; resize: vertical; }
 .trip-card.active-trip { border-left-color: var(--brand); }
 .trip-card h3 { margin: 0; }
 .trip-card p { display: flex; align-items: center; gap: 6px; margin: 7px 0; }
+.trip-profile-editor { border-top: 5px solid var(--brand); }
+.trip-cover-preview { margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); }
+.trip-cover-preview img { display: block; width: 100%; aspect-ratio: 16 / 6; max-height: 340px; object-fit: cover; }
+.trip-cover-preview figcaption { padding: 7px 10px; color: var(--muted); font-size: 0.7rem; }
+.trip-cover-preview a { color: inherit; }
+.packing-progress { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 14px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+.packing-progress > svg, .packing-progress > strong { color: var(--brand); }
+.packing-progress > div { display: grid; gap: 7px; }
+.packing-progress span { font-weight: 800; }
 .selected-trip { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); font-weight: 850; }
 .explore-workspace { display: grid; gap: 16px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
 .search-composer { display: grid; grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) auto; gap: 12px; align-items: end; }
@@ -307,7 +340,7 @@ textarea { min-height: 86px; resize: vertical; }
 .ai-prepare-button { justify-self: start; }
 .ai-prompt-result { display: grid; gap: 12px; }
 .ai-prompt-preview { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
-.import-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.import-summary { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .import-summary div { display: grid; gap: 3px; padding: 12px; border-right: 1px solid var(--line); text-align: center; }
 .import-summary div:last-child { border-right: 0; }
 .import-summary strong { font-size: 1.35rem; }
@@ -329,6 +362,8 @@ textarea { min-height: 86px; resize: vertical; }
 @keyframes marker-pulse { 50% { outline-color: rgba(255, 255, 255, 0.24); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
 @media (max-width: 560px) {
+  html, body, #root, .app-shell, .main-content, .page-stack { max-width: 100%; }
+  body { overflow-x: hidden; }
   .main-content { padding: 12px; }
   .hero { min-height: 150px; padding: 18px; align-items: flex-start; flex-direction: column; }
   .hero h2 { font-size: 2.1rem; }
@@ -344,9 +379,10 @@ textarea { min-height: 86px; resize: vertical; }
   .map-confirmation button { min-width: 0; }
   .map-wrap, .leaflet-map { height: 410px; min-height: 410px; }
   .flight-hero { min-height: 168px; padding: 18px; align-items: flex-start; flex-direction: column; }
-  .home-summary, .flight-meta { grid-template-columns: 1fr; }
-  .home-summary div { border-right: 0; border-bottom: 1px solid var(--line); }
-  .home-summary div:last-child { border-bottom: 0; }
+  .home-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .home-summary div { min-width: 0; padding: 11px 9px; }
+  .home-summary strong { font-size: 1rem; }
+  .flight-meta { grid-template-columns: 1fr; }
   .flight-detail-grid, .trip-list { grid-template-columns: 1fr; }
   .flight-source-row { display: grid; }
   .flight-source-row span:last-child { text-align: left; }
@@ -358,6 +394,10 @@ textarea { min-height: 86px; resize: vertical; }
   .exchange-panel button { align-self: flex-start; }
   .reminder-row { grid-template-columns: auto minmax(0, 1fr); align-items: start; }
   .reminder-row .icon-actions { grid-column: 2; }
+  .readiness-steps { grid-template-columns: 1fr; }
+  .itinerary-empty, .flight-empty { grid-template-columns: auto minmax(0, 1fr); }
+  .itinerary-empty .button-row, .flight-empty .primary { grid-column: 1 / -1; }
+  .itinerary-empty .button-row > *, .flight-empty .primary { width: 100%; }
   .three-cols { grid-template-columns: 1fr; }
   .hours-row { grid-template-columns: 1fr 1fr; }
   .hours-row strong, .hours-row .interval-list, .hours-row > input { grid-column: 1 / -1; }
@@ -366,9 +406,13 @@ textarea { min-height: 86px; resize: vertical; }
   .image-editor-preview .danger-button { justify-self: start; }
   .empty-state { grid-template-columns: auto 1fr; }
   .empty-state .primary { grid-column: 1 / -1; }
-  .import-summary { grid-template-columns: 1fr; }
-  .import-summary div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .import-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .import-summary div { border-bottom: 1px solid var(--line); }
+  .import-summary div:nth-child(2n) { border-right: 0; }
   .import-summary div:last-child { border-bottom: 0; }
+  .more-tabs { width: 100%; margin: 0; padding-inline: 0; }
+  .map-legend { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; scrollbar-width: thin; }
+  .map-legend > span { flex: 0 0 auto; }
   .ai-prepare-button { width: 100%; }
   .import-edit-row { align-items: start; }
   .import-activity-grid, .import-accommodation-grid, .import-flight-grid { grid-template-columns: 1fr; }

@@ -34,6 +34,7 @@ import {
   Landmark,
   LoaderCircle,
   LocateFixed,
+  Luggage,
   Map as MapIcon,
   MapPin,
   MapPinned,
@@ -43,6 +44,7 @@ import {
   Plus,
   RefreshCw,
   RotateCcw,
+  Settings,
   ShoppingBag,
   Share2,
   Ticket,
@@ -66,6 +68,7 @@ import type {
   BackupData,
   Category,
   Expense,
+  PackingItem,
   Reminder,
   StoredImage,
   Trip,
@@ -77,6 +80,7 @@ import { convertTripCurrency, expenseTotals, formatMoney } from '../services/cal
 import { exchangeRateIsFresh, fetchLatestExchangeRate } from '../services/exchangeRates';
 import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
 import { findItineraryGaps } from '../services/planning';
+import { travelReadiness } from '../services/readiness';
 import { dueReminders, nextReminderDelay, reminderCalendarFile, reminderTimestamp } from '../services/reminders';
 import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from '../services/links';
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
@@ -303,10 +307,11 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
   );
   const nextReminder = [...snapshot.reminders].filter((reminder) => !reminder.done).sort((left, right) => reminderTimestamp(left) - reminderTimestamp(right))[0];
   const emptyTrip = !snapshot.activities.length && !snapshot.accommodations.length && !snapshot.flights.length;
+  const readiness = travelReadiness({ trip: snapshot.activeTrip, activities: snapshot.activities, accommodations: snapshot.accommodations, flights: snapshot.flights, documents: snapshot.documents, packingItems: snapshot.packingItems });
 
   return (
     <section className="page-stack">
-      <Hero title={snapshot.activeTrip.destination} subtitle={formatDate(selectedDay)} action={<DaySelect value={selectedDay} days={availableDays} onChange={setSelectedDay} />} />
+      <Hero trip={snapshot.activeTrip} title={snapshot.activeTrip.destination} subtitle={formatDate(selectedDay)} action={<DaySelect value={selectedDay} days={availableDays} onChange={setSelectedDay} />} />
       <section className="home-summary">
         <div><span>Días restantes</span><strong>{daysRemaining}</strong></div>
         <div><span>Próximo vuelo</span><strong>{nextFlight?.flightNumber ?? 'Sin vuelo'}</strong></div>
@@ -318,11 +323,22 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
         <NavLink to="/vuelos"><Plane size={19} /> Vuelos</NavLink>
         <NavLink to="/mas" onClick={() => sessionStorage.setItem('travelcaris-more-tab', 'Documentos')}><FileText size={19} /> Documentos</NavLink>
       </div>
+      <section className="readiness-panel">
+        <div className="readiness-heading"><div><p className="eyebrow">Preparación del viaje</p><h2>{readiness.completed === readiness.total ? 'Todo a punto' : `${readiness.completed} de ${readiness.total} pasos listos`}</h2></div><strong>{readiness.percentage}%</strong></div>
+        <div className="readiness-progress" role="progressbar" aria-label="Preparación del viaje" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readiness.percentage}><span style={{ width: `${readiness.percentage}%` }} /></div>
+        <div className="readiness-steps">
+          {readiness.steps.map((step) => (
+            <NavLink key={step.id} className={step.done ? 'done' : ''} to={step.href} onClick={() => step.tab && sessionStorage.setItem('travelcaris-more-tab', step.tab)}>
+              <span>{step.done ? <Check size={16} /> : <Clock3 size={16} />}{step.label}</span><strong>{step.done ? 'Listo' : 'Revisar'}</strong>
+            </NavLink>
+          ))}
+        </div>
+      </section>
       {emptyTrip && (
         <section className="empty-state">
           <FileText size={28} />
           <div><h2>Empieza con tu información</h2><p>Importa el PDF del viaje o crea las actividades manualmente.</p></div>
-          <NavLink className="primary" to="/mas">Importar PDF</NavLink>
+          <NavLink className="primary" to="/mas" onClick={openPdfImport}>Importar PDF</NavLink>
         </section>
       )}
       <AlertsInbox snapshot={snapshot} refresh={refresh} notify={notify} compact />
@@ -386,7 +402,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
   const allDayActivities = snapshot.activities.filter((activity) => activity.day === selectedDay).sort((a, b) => a.order - b.order);
   const dayActivities = allDayActivities.filter((activity) => activity.planType !== 'Alternativa');
   const alternatives = allDayActivities.filter((activity) => activity.planType === 'Alternativa');
-  const gaps = findItineraryGaps(dayActivities);
+  const gaps = dayActivities.length ? findItineraryGaps(dayActivities) : [];
 
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -402,11 +418,19 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
   return (
     <section className="page-stack">
       <Hero
+        trip={snapshot.activeTrip}
         title="Itinerario"
         subtitle="Arrastra, edita, duplica o mueve actividades"
         action={<button className="primary" onClick={() => setShowNew(true)}><Plus size={18} /> Crear</button>}
       />
       <DayTabs selected={selectedDay} days={availableDays} onSelect={setSelectedDay} />
+      {!allDayActivities.length && (
+        <section className="itinerary-empty">
+          <CalendarDays size={30} />
+          <div><p className="eyebrow">Día libre</p><h2>Diseña este día a tu manera</h2><p>Añade una primera actividad o importa el plan completo del viaje.</p></div>
+          <div className="button-row"><button className="primary" onClick={() => setShowNew(true)}><Plus size={18} /> Añadir actividad</button><NavLink className="external-button" to="/mas" onClick={openPdfImport}>Importar PDF</NavLink></div>
+        </section>
+      )}
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={dayActivities.map((item) => item.id)} strategy={verticalListSortingStrategy}>
           <div className="timeline">
@@ -435,7 +459,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
           ))}
         </section>
       )}
-      <section className="alternatives-section">
+      {alternatives.length > 0 && <section className="alternatives-section">
         <button className="section-toggle" onClick={() => setShowAlternatives((value) => !value)}>
           <span><strong>Alternativas del día</strong><small>{alternatives.length} guardadas</small></span>
           <span>{showAlternatives ? 'Ocultar' : 'Mostrar'}</span>
@@ -447,7 +471,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
             ))}
           </div>
         )}
-      </section>
+      </section>}
       {(editing || showNew) && (
         <ActivityEditor
           activity={editing ?? undefined}
@@ -611,7 +635,7 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
 
   return (
     <section className="page-stack map-page">
-      <Hero title="Mapa" subtitle="Tu viaje, organizado por tipo de lugar" />
+      <Hero trip={snapshot.activeTrip} title="Mapa" subtitle="Tu viaje, organizado por tipo de lugar" />
       <div className="map-toolbar">
         <div className="filters map-filters">
           <label>
@@ -805,12 +829,17 @@ function MoreView({ snapshot, refresh, notify }: ViewProps) {
     sessionStorage.setItem('travelcaris-more-tab', nextTab);
     setTab(nextTab);
   };
+  const tabs: Array<[string, LucideIcon]> = [
+    ['Viajes', MapPinned], ['Alojamientos', BedDouble], ['Explorar', LocateFixed], ['Transportes', Navigation],
+    ['Documentos', FileText], ['Gastos', Euro], ['Equipaje', Luggage], ['Recordatorios', BellRing],
+    ['Vuelos', Plane], ['Instalar', Download], ['Ajustes', Settings],
+  ];
   return (
     <section className="page-stack">
-      <Hero title="Más" subtitle="Viajes, reservas, gastos, listas y ajustes" />
-      <div className="tabs horizontal">
-        {['Viajes', 'Alojamientos', 'Explorar', 'Transportes', 'Documentos', 'Gastos', 'Equipaje', 'Recordatorios', 'Vuelos', 'Instalar', 'Ajustes'].map((item) => (
-          <button key={item} className={tab === item ? 'selected' : ''} onClick={() => selectTab(item)}>{item}</button>
+      <Hero trip={snapshot.activeTrip} title="Más" subtitle="Viajes, reservas, gastos, listas y ajustes" />
+      <div className="tabs more-tabs" aria-label="Herramientas del viaje">
+        {tabs.map(([item, Icon]) => (
+          <button key={item} className={tab === item ? 'selected' : ''} onClick={() => selectTab(item)}><Icon size={17} /><span>{item}</span></button>
         ))}
       </div>
       {tab === 'Viajes' && <TripsPanel snapshot={snapshot} refresh={refresh} notify={notify} />}
@@ -834,12 +863,14 @@ interface ViewProps {
   notify: (message: string) => void;
 }
 
-function Hero({ title, subtitle, action }: { title: string; subtitle: string; action?: React.ReactNode }) {
+function Hero({ trip, title, subtitle, action }: { trip: Trip; title: string; subtitle: string; action?: React.ReactNode }) {
+  const style = trip.coverImage ? { '--hero-image': `url("${trip.coverImage.replace(/"/g, '%22')}")` } as React.CSSProperties : undefined;
   return (
-    <section className="hero">
+    <section className="hero" style={style}>
       <div>
         <h2>{title}</h2>
         <p>{subtitle}</p>
+        {trip.coverImageAttribution && <small className="hero-credit">{trip.coverImageSourceUrl ? <a href={trip.coverImageSourceUrl} target="_blank" rel="noreferrer">{trip.coverImageAttribution}</a> : trip.coverImageAttribution}</small>}
       </div>
       {action}
     </section>
@@ -1336,8 +1367,8 @@ function ExpensesPanel({ snapshot, refresh, notify }: ViewProps) {
       <section className="stats-grid">
         <div><span>Total · destino</span><strong>{formatMoney(totals.totalDestination, trip.currency)}</strong></div>
         <div><span>Total · viajero</span><strong>{exchangeAvailable ? formatMoney(totals.totalTraveller, trip.secondaryCurrency) : 'Sin cambio'}</strong></div>
-        <div><span>Presupuesto</span><strong>{formatMoney(snapshot.settings.budgetGbp, trip.currency)}</strong></div>
-        <div><span>Diferencia</span><strong>{formatMoney(snapshot.settings.budgetGbp - totals.totalDestination, trip.currency)}</strong></div>
+        <div><span>Presupuesto</span><strong>{formatMoney(trip.budget, trip.currency)}</strong></div>
+        <div><span>Diferencia</span><strong>{formatMoney(trip.budget - totals.totalDestination, trip.currency)}</strong></div>
       </section>
       {trip.exchangeRateUpdatedAt && trip.currency !== trip.secondaryCurrency && <div className="exchange-status">1 {trip.currency} = {trip.exchangeRate.toFixed(4)} {trip.secondaryCurrency}<span>Referencia {trip.exchangeRateDate} · {trip.exchangeRateSource}</span></div>}
       {!!totals.unconvertedCount && <div className="info-band">Hay {totals.unconvertedCount} gastos en una moneda distinta del par configurado. Conservan su importe original.</div>}
@@ -1359,18 +1390,32 @@ function ExpensesPanel({ snapshot, refresh, notify }: ViewProps) {
 }
 
 function PackingPanel({ snapshot, refresh, notify }: ViewProps) {
-  const [title, setTitle] = useState('');
+  const [draft, setDraft] = useState<Pick<PackingItem, 'title' | 'list' | 'person' | 'quantity' | 'notes'>>({ title: '', list: 'Equipaje', person: '', quantity: 1, notes: '' });
+  const completed = snapshot.packingItems.filter((item) => item.done).length;
+  const percentage = snapshot.packingItems.length ? Math.round((completed / snapshot.packingItems.length) * 100) : 0;
+  const lists: PackingItem['list'][] = ['Equipaje', 'Documentación', 'Medicamentos', 'Bebé', 'Niños', 'Tecnología', 'Antes de salir', 'Durante el viaje'];
   return (
     <div className="page-stack">
+      <section className="packing-progress">
+        <Luggage size={26} />
+        <div><span>{snapshot.packingItems.length ? `${completed} de ${snapshot.packingItems.length} preparados` : 'Tu lista está lista para empezar'}</span><div className="readiness-progress" role="progressbar" aria-label="Progreso del equipaje" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percentage}><span style={{ width: `${percentage}%` }} /></div></div>
+        <strong>{percentage}%</strong>
+      </section>
       <div className="form-card">
-        <label>Nuevo elemento<input value={title} onChange={(event) => setTitle(event.target.value)} /></label>
-        <button className="primary" onClick={async () => { if (!title.trim()) return; await putPackingItem({ id: uuid(), tripId: snapshot.activeTrip.id, list: 'Equipaje', title, done: false, person: '', quantity: 1, notes: '', order: snapshot.packingItems.length + 1 }); setTitle(''); await refresh(); notify('Elemento añadido'); }}><Plus size={18} /> Añadir</button>
+        <label>Nuevo elemento<input value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Cargador, medicación, pasaportes..." /></label>
+        <div className="three-cols">
+          <label>Lista<select value={draft.list} onChange={(event) => setDraft({ ...draft, list: event.target.value as PackingItem['list'] })}>{lists.map((list) => <option key={list}>{list}</option>)}</select></label>
+          <label>Persona<input list="travelcaris-travellers" value={draft.person} onChange={(event) => setDraft({ ...draft, person: event.target.value })} placeholder="Todos" /><datalist id="travelcaris-travellers">{snapshot.activeTrip.travellers.map((traveller) => <option key={traveller} value={traveller} />)}</datalist></label>
+          <label>Cantidad<input type="number" min="1" value={draft.quantity} onChange={(event) => setDraft({ ...draft, quantity: Number(event.target.value) || 1 })} /></label>
+        </div>
+        <label>Notas<input value={draft.notes} onChange={(event) => setDraft({ ...draft, notes: event.target.value })} placeholder="Talla, dosis o dónde guardarlo" /></label>
+        <button className="primary" onClick={async () => { if (!draft.title.trim()) return notify('Escribe el elemento que quieres añadir'); await putPackingItem({ id: uuid(), tripId: snapshot.activeTrip.id, ...draft, title: draft.title.trim(), done: false, order: snapshot.packingItems.length + 1 }); setDraft({ ...draft, title: '', notes: '', quantity: 1 }); await refresh(); notify('Elemento añadido'); }}><Plus size={18} /> Añadir a la lista</button>
       </div>
+      {!snapshot.packingItems.length && <div className="info-band">Puedes separar la lista por persona y añadir preparativos como documentación, medicación o tareas antes de salir.</div>}
       {snapshot.packingItems.map((item) => (
         <div className="check-row" key={item.id}>
           <input aria-label={`Marcar ${item.title}`} type="checkbox" checked={item.done} onChange={async (event) => { await putPackingItem({ ...item, done: event.target.checked }); await refresh(); }} />
-          <span>{item.title}</span>
-          <small>{item.list}</small>
+          <span><strong>{item.quantity > 1 ? `${item.quantity} × ` : ''}{item.title}</strong><small>{[item.list, item.person, item.notes].filter(Boolean).join(' · ')}</small></span>
           <button aria-label={`Eliminar ${item.title} del equipaje`} title="Eliminar" onClick={async () => { await deletePackingItem(item.id); await refresh(); notify('Elemento eliminado'); }}><Trash2 size={17} /></button>
         </div>
       ))}
@@ -1509,7 +1554,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
           <div><strong>{trip.currency === trip.secondaryCurrency ? 'No hace falta conversión' : `1 ${trip.currency} = ${trip.exchangeRateUpdatedAt ? trip.exchangeRate.toFixed(4) : '—'} ${trip.secondaryCurrency}`}</strong><span>{trip.exchangeRateUpdatedAt ? `Referencia ${trip.exchangeRateDate} · ${trip.exchangeRateSource}` : 'Pendiente de obtener el último cambio publicado'}</span></div>
           <button type="button" onClick={refreshExchangeRate} disabled={rateLoading}>{rateLoading ? <LoaderCircle className="spinning" size={18} /> : <RefreshCw size={18} />} Actualizar</button>
         </div>
-        <label>Presupuesto ({trip.currency})<input type="number" min="0" value={snapshot.settings.budgetGbp} onChange={async (event) => { await putSettings({ ...snapshot.settings, budgetGbp: Number(event.target.value) }); await refresh(); }} /></label>
+        <label>Presupuesto ({trip.currency})<input type="number" min="0" value={trip.budget} onChange={async (event) => { await saveTrip({ ...trip, budget: Number(event.target.value) }); await refresh(); }} /></label>
         <label>Avisar si no se verifica en (días)<input type="number" min="1" max="365" value={snapshot.settings.placeInfoStaleDays} onChange={async (event) => { await putSettings({ ...snapshot.settings, placeInfoStaleDays: Number(event.target.value) || 30 }); await refresh(); }} /></label>
         <div className="grid-actions">
           <button onClick={exportJson}><Download size={18} /> Exportar JSON</button>
@@ -1542,7 +1587,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.5.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.6.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
@@ -1687,4 +1732,13 @@ function slugify(value: string) {
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '');
+}
+
+function openPdfImport() {
+  try {
+    sessionStorage.setItem('travelcaris-more-tab', 'Viajes');
+    sessionStorage.setItem('travelcaris-open-pdf-import', 'true');
+  } catch {
+    // La vista Viajes sigue siendo accesible aunque el navegador bloquee el almacenamiento de sesión.
+  }
 }

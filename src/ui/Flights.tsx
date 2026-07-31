@@ -55,11 +55,12 @@ export function FlightsView(props: FlightViewProps) {
 
   return (
     <section className="page-stack">
-      <section className="flight-hero">
+      <section className="flight-hero" style={snapshot.activeTrip.coverImage ? { backgroundImage: `url("${snapshot.activeTrip.coverImage.replace(/"/g, '%22')}")` } : undefined}>
         <div>
           <p className="eyebrow">TravelCaris · {snapshot.activeTrip.name}</p>
           <h2>Vuelos</h2>
           <p>Horarios, cambios, fuentes oficiales e historial familiar en un mismo lugar.</p>
+          {snapshot.activeTrip.coverImageAttribution && <small className="hero-credit">{snapshot.activeTrip.coverImageSourceUrl ? <a href={snapshot.activeTrip.coverImageSourceUrl} target="_blank" rel="noreferrer">{snapshot.activeTrip.coverImageAttribution}</a> : snapshot.activeTrip.coverImageAttribution}</small>}
         </div>
         <button className="primary" onClick={() => setShowNew(true)}>
           <Plus size={18} /> Añadir
@@ -91,6 +92,14 @@ export function FlightsView(props: FlightViewProps) {
           <FlightCard key={flight.id} flight={flight} />
         ))}
       </div>
+
+      {!snapshot.flights.length && (
+        <section className="flight-empty">
+          <Plane size={32} />
+          <div><p className="eyebrow">Tu ruta empieza aquí</p><h3>Añade el primer vuelo</h3><p>Podrás guardar horarios, consultar fuentes oficiales y registrar cambios aunque no configures ninguna API.</p></div>
+          <button className="primary" onClick={() => setShowNew(true)}><Plus size={18} /> Añadir vuelo</button>
+        </section>
+      )}
 
       <CriticalFlightWarnings />
       {showNew && <NewFlightEditor {...props} onClose={() => setShowNew(false)} />}
@@ -633,8 +642,8 @@ function ImpactAssistant({ flight, snapshot, notify }: { flight: Flight; snapsho
 
 function CriticalFlightWarnings() {
   return (
-    <section className="critical-warnings">
-      <h3>Avisos críticos permanentes</h3>
+    <details className="critical-warnings">
+      <summary>Información importante antes de volar</summary>
       <ul>
         <li>Un retraso no cambia automáticamente la hora límite de facturación.</li>
         <li>Un retraso no implica que se deba llegar más tarde al aeropuerto.</li>
@@ -643,7 +652,7 @@ function CriticalFlightWarnings() {
         <li>La aerolínea y las pantallas del aeropuerto son la fuente prioritaria.</li>
         <li>TravelCaris es una herramienta organizativa y no sustituye la información oficial.</li>
       </ul>
-    </section>
+    </details>
   );
 }
 
