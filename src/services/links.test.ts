@@ -4,17 +4,17 @@ import { appleMapsSearch, buildProviderSearch, composeExploreQuery, googleMapsSe
 
 describe('external links', () => {
   it('crea enlaces codificados para mapas y buscadores', () => {
-    expect(googleMapsSearch('British Museum Londres')).toBe(
-      'https://www.google.com/maps/search/?api=1&query=British%20Museum%20Londres',
+    expect(googleMapsSearch('Museo central Roma')).toBe(
+      'https://www.google.com/maps/search/?api=1&query=Museo%20central%20Roma',
     );
-    expect(appleMapsSearch('Victoria London')).toBe('https://maps.apple.com/?q=Victoria%20London');
+    expect(appleMapsSearch('Centro Roma')).toBe('https://maps.apple.com/?q=Centro%20Roma');
     expect(googleSearch('farmacias cercanas')).toContain('farmacias%20cercanas');
-    expect(tripadvisorSearch('pizza familiar')).toContain('pizza%20familiar%20Londres');
+    expect(tripadvisorSearch('pizza familiar Roma')).toContain('pizza%20familiar%20Roma');
   });
 
   it('combina la consulta con el contexto sin duplicar la ciudad', () => {
-    const context: ExploreContext = { kind: 'Zona de Londres', label: 'Westminster', query: 'Westminster, London' };
-    expect(composeExploreQuery('free tour español', context, 'Londres')).toBe('free tour español Westminster, London Londres');
+    const context: ExploreContext = { kind: 'Zona del destino', label: 'Centro', query: 'Centro, Roma' };
+    expect(composeExploreQuery('free tour español', context, 'Roma')).toBe('free tour español Centro, Roma Roma');
   });
 
   it('indica cuándo debe copiarse la consulta para un proveedor sin URL estable', () => {

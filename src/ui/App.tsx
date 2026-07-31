@@ -82,7 +82,7 @@ import { TripsPanel } from './Trips';
 import { ExploreView } from './Explore';
 
 const today = new Date().toISOString().slice(0, 10);
-const londonCenter: [number, number] = [51.5072, -0.1276];
+const worldCenter: [number, number] = [20, 0];
 
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
@@ -113,7 +113,7 @@ function LoadedApp({ snapshot, refresh, notify, notice }: ViewProps & { notice: 
           <p className="eyebrow">TravelCaris</p>
           <h1>{snapshot.activeTrip.name}</h1>
         </div>
-        <span className="status-pill">{unreadAlerts ? `${unreadAlerts} alertas` : 'Local y privado'}</span>
+        <span className="status-pill">{unreadAlerts ? `${unreadAlerts} alertas` : 'Datos locales'}</span>
       </header>
       <main className="main-content" aria-live="polite">
         <Routes>
@@ -180,6 +180,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
     0,
     Math.ceil((new Date(`${snapshot.activeTrip.startDate}T12:00:00`).getTime() - currentTime) / 86_400_000),
   );
+  const emptyTrip = !snapshot.activities.length && !snapshot.accommodations.length && !snapshot.flights.length;
 
   return (
     <section className="page-stack">
@@ -195,6 +196,13 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
         <NavLink to="/vuelos"><Plane size={19} /> Vuelos</NavLink>
         <NavLink to="/mas"><FileText size={19} /> Documentos</NavLink>
       </div>
+      {emptyTrip && (
+        <section className="empty-state">
+          <FileText size={28} />
+          <div><h2>Empieza con tu información</h2><p>Importa el PDF del viaje o crea las actividades manualmente.</p></div>
+          <NavLink className="primary" to="/mas">Importar PDF</NavLink>
+        </section>
+      )}
       <AlertsInbox snapshot={snapshot} refresh={refresh} notify={notify} compact />
       <section className="highlight-panel">
         <p className="eyebrow">Alojamiento activo</p>
@@ -291,7 +299,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
             <NavLink
               key={`${gap.start}-${gap.end}`}
               to="/explorar"
-              onClick={() => sessionStorage.setItem('travelcaris-explore-context', JSON.stringify({ kind: 'Zona de Londres', label: `Hueco ${gap.start}-${gap.end}`, query: snapshot.activeTrip.destination }))}
+              onClick={() => sessionStorage.setItem('travelcaris-explore-context', JSON.stringify({ kind: 'Zona del destino', label: `Hueco ${gap.start}-${gap.end}`, query: snapshot.activeTrip.destination }))}
             >
               <Clock3 size={17} /> {gap.start}-{gap.end} · Buscar cerca
             </NavLink>
@@ -350,6 +358,9 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
       (day === 'all' || activity.day === day) &&
       (category === 'all' || activity.category === category),
   );
+  const mapCenter: [number, number] = places.length
+    ? [places.reduce((sum, place) => sum + place.lat!, 0) / places.length, places.reduce((sum, place) => sum + place.lng!, 0) / places.length]
+    : worldCenter;
 
   return (
     <section className="page-stack">
@@ -366,7 +377,7 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
       </div>
       {!online && <div className="info-band">El listado guardado funciona sin conexión. Las teselas de OpenStreetMap necesitan internet.</div>}
       <div className="map-wrap" data-testid="trip-map">
-        <MapContainer center={londonCenter} zoom={12} scrollWheelZoom={false} className="leaflet-map">
+        <MapContainer key={mapCenter.join(',')} center={mapCenter} zoom={places.length ? 12 : 2} scrollWheelZoom={false} className="leaflet-map">
           <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
           {places.map((activity) => (
             <Marker key={activity.id} position={[activity.lat!, activity.lng!]}>
@@ -418,7 +429,7 @@ function MoreView({ snapshot, refresh, notify }: ViewProps) {
   const [tab, setTab] = useState('Viajes');
   return (
     <section className="page-stack">
-      <Hero title="Más" subtitle="Reservas, gastos, listas, ajustes e instalación" />
+      <Hero title="Más" subtitle="Viajes, reservas, gastos, listas y ajustes" />
       <div className="tabs horizontal">
         {['Viajes', 'Alojamientos', 'Explorar', 'Transportes', 'Documentos', 'Gastos', 'Equipaje', 'Recordatorios', 'Vuelos', 'Instalar', 'Ajustes'].map((item) => (
           <button key={item} className={tab === item ? 'selected' : ''} onClick={() => setTab(item)}>{item}</button>
@@ -708,6 +719,33 @@ function WeeklyHoursEditor({ value, onChange }: { value: Activity['openingHours'
 function AccommodationsPanel({ snapshot, refresh, notify }: ViewProps) {
   return (
     <div className="page-stack">
+      <button
+        className="primary"
+        onClick={async () => {
+          const now = new Date().toISOString();
+          await putAccommodation({
+            id: uuid(),
+            tripId: snapshot.activeTrip.id,
+            name: 'Nuevo alojamiento',
+            address: '',
+            phone: '',
+            checkIn: '',
+            checkOut: '',
+            startDate: snapshot.activeTrip.startDate,
+            endDate: snapshot.activeTrip.endDate,
+            entryInstructions: '',
+            luggageNotes: '',
+            notes: '',
+            images: [],
+            active: snapshot.accommodations.length === 0,
+            createdAt: now,
+            updatedAt: now,
+          });
+          await refresh();
+          notify('Alojamiento añadido');
+        }}
+      ><Plus size={18} /> Añadir alojamiento</button>
+      {!snapshot.accommodations.length && <div className="info-band">Todavía no hay alojamientos en este viaje.</div>}
       {snapshot.accommodations.map((item) => (
         <EditableAccommodation key={item.id} accommodation={item} refresh={refresh} notify={notify} />
       ))}
@@ -891,8 +929,8 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       </div>
       {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities?.length ?? 0} actividades, {preview.expenses?.length ?? 0} gastos.</p><button className="primary" onClick={async () => { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); }}>Sustituir datos</button><button className="secondary" onClick={async () => { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); }}>Combinar</button></div>}
       <div className="danger-zone">
-        <button onClick={async () => { if (confirm('¿Restaurar el itinerario original?')) { await restoreInitialData(); await refresh(); notify('Itinerario original restaurado'); } }}>Restaurar itinerario original</button>
-        <p>TravelCaris 3.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <button onClick={async () => { if (confirm('¿Vaciar todos los datos locales y volver al inicio?')) { await restoreInitialData(); await refresh(); notify('Datos locales vaciados'); } }}>Vaciar datos locales</button>
+        <p>TravelCaris 3.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );

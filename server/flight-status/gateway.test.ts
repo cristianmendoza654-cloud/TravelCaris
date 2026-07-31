@@ -3,10 +3,10 @@ import type { FlightLookupInput, FlightStatusProvider } from '../../src/domain/t
 import { FlightStatusGateway } from './gateway';
 
 const input: FlightLookupInput = {
-  flightNumber: 'VY8475',
-  date: '2026-08-01',
-  origin: 'ALC',
-  destination: 'LGW',
+  flightNumber: 'TC1234',
+  date: '2027-09-03',
+  origin: 'ORG',
+  destination: 'DST',
 };
 
 describe('FlightStatusGateway', () => {

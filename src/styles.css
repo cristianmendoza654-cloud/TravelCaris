@@ -39,7 +39,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .status-pill, .meta-row span { border: 1px solid var(--line); border-radius: 999px; padding: 6px 10px; font-size: 0.78rem; background: var(--surface); white-space: nowrap; }
 .main-content { width: min(920px, 100%); margin: 0 auto; padding: 16px; }
 .page-stack { display: grid; gap: 14px; }
-.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 168px; padding: 22px; border-radius: 8px; color: white; background: linear-gradient(rgba(17, 49, 55, 0.12), rgba(17, 49, 55, 0.76)), url('/london-hero.png'); background-position: center; background-size: cover; box-shadow: var(--shadow); }
+.hero { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; min-height: 168px; padding: 22px; border-radius: 8px; color: white; background: linear-gradient(rgba(17, 49, 55, 0.12), rgba(17, 49, 55, 0.76)), url('/travel-hero.png'); background-position: center; background-size: cover; box-shadow: var(--shadow); }
 .hero h2 { margin: 0; font-size: clamp(2rem, 9vw, 4rem); line-height: 0.98; }
 .hero p { margin: 8px 0 0; max-width: 520px; color: rgba(255,255,255,0.9); }
 .highlight-panel, .next-card, .form-card, .info-band, .danger-zone { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 16px; box-shadow: var(--shadow); }
@@ -99,7 +99,7 @@ textarea { min-height: 86px; resize: vertical; }
 .quick-links { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .quick-links a { min-height: 68px; display: grid; place-items: center; gap: 5px; padding: 8px; color: var(--ink); text-decoration: none; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); font-size: 0.78rem; font-weight: 800; }
 
-.flight-hero { min-height: 180px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 24px; border-radius: 8px; color: white; background: #174a57 url('/london-hero.png') center 44% / cover no-repeat; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+.flight-hero { min-height: 180px; display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; padding: 24px; border-radius: 8px; color: white; background: #174a57 url('/travel-hero.png') center / cover no-repeat; box-shadow: var(--shadow); position: relative; overflow: hidden; }
 .flight-hero::before { content: ''; position: absolute; inset: 0; background: rgba(8, 38, 44, 0.72); }
 .flight-hero > * { position: relative; z-index: 1; }
 .flight-hero h2 { margin: 0; font-size: 2.2rem; }
@@ -222,6 +222,21 @@ textarea { min-height: 86px; resize: vertical; }
 .section-toggle span:first-child { display: grid; gap: 3px; }
 .section-toggle small { color: var(--muted); }
 .alternatives-list { padding-left: 10px; border-left: 2px solid #bd7b13; }
+.empty-state { display: grid; grid-template-columns: auto 1fr auto; gap: 14px; align-items: center; padding: 18px; border: 1px solid var(--line); border-left: 5px solid var(--brand); border-radius: 8px; background: var(--surface); }
+.empty-state h2, .empty-state p, .privacy-note p { margin: 0; }
+.empty-state p { margin-top: 4px; color: var(--muted); }
+.privacy-note { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 12px; border: 1px solid color-mix(in srgb, var(--green) 55%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--green) 8%, var(--surface)); }
+.pdf-import-panel { border-top: 5px solid var(--brand); }
+.pdf-import-mode { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.import-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.import-summary div { display: grid; gap: 3px; padding: 12px; border-right: 1px solid var(--line); text-align: center; }
+.import-summary div:last-child { border-right: 0; }
+.import-summary strong { font-size: 1.35rem; }
+.import-summary span { color: var(--muted); font-size: 0.8rem; }
+.import-details { display: grid; gap: 8px; }
+.import-details details { border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; }
+.import-details summary { cursor: pointer; font-weight: 850; }
+.import-details p { margin: 9px 0 0; overflow-wrap: anywhere; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
@@ -247,4 +262,9 @@ textarea { min-height: 86px; resize: vertical; }
   .hours-row { grid-template-columns: 1fr 1fr; }
   .hours-row strong, .hours-row .interval-list, .hours-row > input { grid-column: 1 / -1; }
   .activity-image { height: 150px; }
+  .empty-state { grid-template-columns: auto 1fr; }
+  .empty-state .primary { grid-column: 1 / -1; }
+  .import-summary { grid-template-columns: 1fr; }
+  .import-summary div { border-right: 0; border-bottom: 1px solid var(--line); }
+  .import-summary div:last-child { border-bottom: 0; }
 }

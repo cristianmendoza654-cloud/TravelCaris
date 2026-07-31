@@ -9,7 +9,7 @@ import {
   initialSettings,
   initialTransports,
   initialTrips,
-  londonTripId,
+  starterTripId,
 } from '../domain/initialData';
 import { completeActivity, richActivityDefaults } from '../domain/activity';
 import type {
@@ -34,6 +34,7 @@ import type {
 } from '../domain/types';
 import { db } from './db';
 import { detectFlightChanges, flightNumberVariants, normalizeFlightNumber } from './flightStatus';
+import type { PdfImportDraft } from './pdfImport';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -67,7 +68,7 @@ export async function getSnapshot() {
   const trips = await db.trips.orderBy('startDate').toArray();
   const activeTripId = trips.some((trip) => trip.id === settings.activeTripId)
     ? settings.activeTripId
-    : trips[0]?.id ?? londonTripId;
+    : trips[0]?.id ?? starterTripId;
   const [
     activities,
     accommodations,
@@ -128,7 +129,7 @@ export const sortActivities = (a: Activity, b: Activity) =>
 
 async function activeTripId() {
   await ensureInitialData();
-  return (await db.settings.get('settings'))?.activeTripId ?? londonTripId;
+  return (await db.settings.get('settings'))?.activeTripId ?? starterTripId;
 }
 
 export async function saveActivity(activity: Activity) {
@@ -361,6 +362,56 @@ export async function selectTrip(tripId: string) {
   await db.settings.put({ ...settings, activeTripId: tripId });
 }
 
+export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'new') {
+  await ensureInitialData();
+  const currentId = await activeTripId();
+  const currentTrip = await db.trips.get(currentId);
+  const importedTrip = mode === 'new'
+    ? await createTrip(data.trip)
+    : {
+        ...(currentTrip ?? initialTrips[0]),
+        ...data.trip,
+        id: currentId,
+        updatedAt: new Date().toISOString(),
+      };
+
+  if (mode === 'replace') await saveTrip(importedTrip);
+  const tripId = importedTrip.id;
+  const oldFlights = await db.flights.where('tripId').equals(tripId).toArray();
+
+  await db.transaction(
+    'rw',
+    [db.activities, db.accommodations, db.transports, db.flights, db.flightStatusHistory, db.flightAlerts],
+    async () => {
+      await Promise.all([
+        db.activities.where('tripId').equals(tripId).delete(),
+        db.accommodations.where('tripId').equals(tripId).delete(),
+        db.transports.where('tripId').equals(tripId).delete(),
+        db.flights.where('tripId').equals(tripId).delete(),
+        db.flightAlerts.where('tripId').equals(tripId).delete(),
+      ]);
+      if (oldFlights.length) {
+        await db.flightStatusHistory.where('flightId').anyOf(oldFlights.map((flight) => flight.id)).delete();
+      }
+    },
+  );
+
+  for (const activity of data.activities) await createActivity({ ...activity, tripId });
+  const importedAt = new Date().toISOString();
+  await db.accommodations.bulkPut(
+    data.accommodations.map((accommodation) => ({
+      ...accommodation,
+      id: uuid(),
+      tripId,
+      createdAt: importedAt,
+      updatedAt: importedAt,
+    })),
+  );
+  for (const flight of data.flights) await createFlight({ ...flight, tripId });
+  await selectTrip(tripId);
+  return tripId;
+}
+
 export async function saveFlight(flight: Flight) {
   await ensureInitialData();
   const normalizedFlightNumber = normalizeFlightNumber(flight.flightNumber);
@@ -418,11 +469,11 @@ export async function createFlight(input: Partial<Flight> & Pick<Flight, 'flight
     aircraftRegistration: '',
     bookingReference: '',
     ticketNumber: '',
-    includedBaggage: '',
-    notes: '',
-    officialTrackingUrl: '',
-    departureAirportUrl: '',
-    arrivalAirportUrl: '',
+    includedBaggage: input.includedBaggage ?? '',
+    notes: input.notes ?? '',
+    officialTrackingUrl: input.officialTrackingUrl ?? '',
+    departureAirportUrl: input.departureAirportUrl ?? '',
+    arrivalAirportUrl: input.arrivalAirportUrl ?? '',
     lastStatusProvider: 'Manual',
     lastUpdatedAt: '',
     lastCheckedAt: '',
@@ -629,7 +680,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.0.0',
+    version: '3.1.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

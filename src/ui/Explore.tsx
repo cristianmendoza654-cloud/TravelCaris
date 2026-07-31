@@ -41,8 +41,6 @@ const quickSearches = [
   ['Emergencias', 'farmacia hospital policía emergencias'],
 ] as const;
 
-const londonZones = ['Bloomsbury', 'Westminster', 'Covent Garden', 'South Bank', 'South Kensington', 'City of London', 'Greenwich', 'Victoria'];
-
 const sessionKey = 'travelcaris-explore-context';
 
 function initialContext(destination: string): ExploreContext {
@@ -59,7 +57,7 @@ export function ExploreView({ snapshot, refresh, notify }: ExploreProps) {
   const [query, setQuery] = useState('restaurantes familiares económicos');
   const [context, setContextState] = useState<ExploreContext>(() => initialContext(snapshot.activeTrip.destination));
   const [address, setAddress] = useState('');
-  const [zone, setZone] = useState('Westminster');
+  const [zone, setZone] = useState('');
   const [activityId, setActivityId] = useState(snapshot.activities[0]?.id ?? '');
   const [showProviders, setShowProviders] = useState(false);
   const [showPlaceEditor, setShowPlaceEditor] = useState(false);
@@ -89,7 +87,7 @@ export function ExploreView({ snapshot, refresh, notify }: ExploreProps) {
       const activity = snapshot.activities.find((item) => item.id === activityId) ?? snapshot.activities[0];
       if (activity) setContext({ kind, label: activity.title, query: activity.address || activity.title, lat: activity.lat, lng: activity.lng, activityId: activity.id });
     }
-    if (kind === 'Zona de Londres') setContext({ kind, label: zone, query: `${zone}, London` });
+    if (kind === 'Zona del destino') setContext({ kind, label: zone || 'Zona', query: [zone, snapshot.activeTrip.destination].filter(Boolean).join(', ') });
     if (kind === 'Dirección escrita') setContext({ kind, label: address || 'Dirección escrita', query: address });
     if (kind === 'Marcador del mapa') {
       const marker = readMapMarker();
@@ -165,12 +163,10 @@ export function ExploreView({ snapshot, refresh, notify }: ExploreProps) {
               <input value={address} onChange={(event) => setAddress(event.target.value)} onBlur={() => chooseKind('Dirección escrita')} placeholder="Dirección o punto de referencia" />
             </label>
           )}
-          {context.kind === 'Zona de Londres' && (
+          {context.kind === 'Zona del destino' && (
             <label>
               Zona
-              <select value={zone} onChange={(event) => { setZone(event.target.value); setContext({ kind: 'Zona de Londres', label: event.target.value, query: `${event.target.value}, London` }); }}>
-                {londonZones.map((item) => <option key={item}>{item}</option>)}
-              </select>
+              <input value={zone} onChange={(event) => setZone(event.target.value)} onBlur={() => chooseKind('Zona del destino')} placeholder="Barrio o zona" />
             </label>
           )}
           <button className="secondary location-button" onClick={useMyLocation}><LocateFixed size={18} /> Usar mi ubicación</button>

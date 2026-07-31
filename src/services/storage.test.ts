@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyPdfImport,
   createActivity,
   deleteActivity,
   exportBackup,
@@ -16,12 +17,15 @@ import {
   saveSearchProvider,
   saveActivity,
 } from './storage';
+import { parseTravelDocumentText } from './pdfImport';
 
 describe('storage repository', () => {
-  it('carga el itinerario inicial', async () => {
+  it('comienza sin itinerario, alojamientos ni vuelos publicados', async () => {
+    await restoreInitialData();
     const snapshot = await getSnapshot();
-    expect(snapshot.activities.length).toBeGreaterThan(25);
-    expect(snapshot.activities.some((activity) => activity.title.includes('British Museum'))).toBe(true);
+    expect(snapshot.activities).toEqual([]);
+    expect(snapshot.accommodations).toEqual([]);
+    expect(snapshot.flights).toEqual([]);
   });
 
   it('crea, edita y elimina una actividad', async () => {
@@ -36,15 +40,17 @@ describe('storage repository', () => {
 
   it('reordena y cambia de día una actividad', async () => {
     await restoreInitialData();
+    await createActivity({ title: 'Primera', day: '2027-09-01', startTime: '09:00' });
+    await createActivity({ title: 'Segunda', day: '2027-09-01', startTime: '11:00' });
     const snapshot = await getSnapshot();
-    const day = snapshot.activities.filter((activity) => activity.day === '2026-08-01');
+    const day = snapshot.activities.filter((activity) => activity.day === '2027-09-01');
     const reordered = [...day].reverse().map((activity) => activity.id);
-    await reorderActivities('2026-08-01', reordered);
+    await reorderActivities('2027-09-01', reordered);
     let next = await getSnapshot();
-    expect(next.activities.filter((activity) => activity.day === '2026-08-01')[0].id).toBe(reordered[0]);
-    await moveActivity(reordered[0], '2026-08-03');
+    expect(next.activities.filter((activity) => activity.day === '2027-09-01')[0].id).toBe(reordered[0]);
+    await moveActivity(reordered[0], '2027-09-03');
     next = await getSnapshot();
-    expect(next.activities.find((activity) => activity.id === reordered[0])?.day).toBe('2026-08-03');
+    expect(next.activities.find((activity) => activity.id === reordered[0])?.day).toBe('2027-09-03');
   });
 
   it('exporta e importa una copia JSON', async () => {
@@ -65,12 +71,12 @@ describe('storage repository', () => {
     await saveSearchProvider({ ...provider, enabled: false });
     await recordSearch({
       query: 'free tours con niños',
-      context: { kind: 'Zona de Londres', label: 'Westminster', query: 'Westminster, London' },
+      context: { kind: 'Zona del destino', label: 'Centro', query: 'Centro, Roma' },
       providerId: provider.id,
     });
     await savePlace({
       name: 'Lugar de prueba',
-      address: 'Westminster, London',
+      address: 'Centro, Roma',
       category: 'Tour',
       sourceLink: 'https://example.com',
       notes: '',
@@ -131,5 +137,23 @@ describe('storage repository', () => {
     expect(backup.documents.find((item) => item.id === 'document-test')?.dataUrl).toContain('data:text/plain');
     expect(backup.expenses.find((item) => item.id === 'expense-test')?.amount).toBe(25);
     expect(backup.packingItems.find((item) => item.id === 'packing-test')?.title).toBe('Paraguas');
+  });
+
+  it('rellena el viaje desde una vista previa de PDF sin guardar el archivo', async () => {
+    await restoreInitialData();
+    const draft = parseTravelDocumentText([
+      'ROMA EN FAMILIA · 3-5 SEPTIEMBRE 2027\n' +
+      'Llegada: Iberia IB1234, Madrid-Roma, viernes 3 de septiembre (08:00-10:30).\n' +
+      'ALOJAMIENTO 1\nHotel Central\nVia de Ejemplo 10\n' +
+      '3. Itinerario diario\nDía 1 · Viernes 3 · Centro\nHora Plan Coste / reserva\n' +
+      '11:30 Paseo por la plaza principal. Gratis\n14:00 Comida en restaurante local. €12-€18 adulto\n',
+    ], 'ejemplo.pdf');
+    await applyPdfImport(draft, 'replace');
+    const snapshot = await getSnapshot();
+    expect(snapshot.activeTrip.destination).toBe('Roma');
+    expect(snapshot.activities).toHaveLength(2);
+    expect(snapshot.accommodations[0].name).toBe('Hotel Central');
+    expect(snapshot.flights[0].flightNumber).toBe('IB1234');
+    expect(snapshot.documents).toEqual([]);
   });
 });

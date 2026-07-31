@@ -1,6 +1,6 @@
 # TravelCaris
 
-Organizador familiar de viajes, itinerarios, vuelos, mapas, reservas y gastos. Es una PWA móvil, local y privada: Londres en familia 2026 es el primer viaje cargado, pero se pueden crear y alternar otros viajes.
+Organizador familiar de viajes, itinerarios, vuelos, mapas, reservas y gastos. Es una PWA móvil que comienza sin itinerarios, alojamientos ni vuelos publicados. Cada usuario rellena sus viajes localmente.
 
 ## Puesta en marcha
 
@@ -25,6 +25,7 @@ El build se genera en `dist`.
 ## Funciones principales
 
 - Gestión de varios viajes, con viaje activo y estados Próximo, En curso, Finalizado y Archivado.
+- Importación local de PDF con vista previa editable para detectar destino, fechas, actividades, alojamientos y vuelos.
 - Inicio con días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
 - Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje y recordatorios.
 - Actividades enriquecidas con horario planificado, horario semanal por intervalos, fechas especiales, precios por tipo de viajero, reservas, accesibilidad, plan de lluvia y trazabilidad de la fuente.
@@ -32,7 +33,7 @@ El build se genera en `dist`.
 - Explorar por ciudad, zona, alojamiento, actividad, dirección, marcador o ubicación solicitada explícitamente.
 - Búsquedas rápidas familiares y económicas, historial reciente, lugares guardados y alta directa como favorito, alternativa o actividad principal.
 - Proveedores externos activables y ampliables: Google Maps, Apple Maps, Google, Tripadvisor, Civitatis, GuruWalk, GetYourGuide, Viator y webs oficiales.
-- Vuelos iniciales VY8475 y U22315, con normalización de variantes como `U2 2315` y `EZY2315`.
+- Vuelos manuales con normalización de números y detección de duplicados.
 - Horas programadas, estimadas y reales almacenadas por separado.
 - Edición manual, historial inmutable, bandeja de alertas y detección de retrasos, cancelaciones, terminales y puertas.
 - Conflictos visibles cuando un proveedor contradice un dato introducido por el usuario.
@@ -46,7 +47,7 @@ TravelCaris funciona completamente sin API:
 
 - muestra, crea y edita vuelos;
 - conserva los datos y el historial manual en IndexedDB;
-- abre los buscadores oficiales de Vueling, easyJet, Alicante, Gatwick y Luton;
+- abre las fuentes oficiales que el usuario guarde para cada aerolínea y aeropuerto;
 - crea alertas internas a partir de cambios registrados;
 - guarda billetes y tarjetas de embarque localmente;
 - mantiene itinerario, mapas guardados, gastos, documentos y equipaje;
@@ -161,7 +162,9 @@ El comando no debe devolver coincidencias. Las pruebas también inspeccionan los
 
 Viajes, vuelos, localizadores, billetes, documentos, búsquedas, favoritos e imágenes se guardan localmente en IndexedDB. Exporta copias periódicas desde Más > Ajustes. Conserva además los documentos esenciales en correo o Archivos del dispositivo.
 
-El repositorio solo incluye zonas genéricas para los alojamientos de ejemplo. Las direcciones exactas, reservas y documentos privados se introducen en el dispositivo y no deben añadirse al control de versiones.
+El repositorio no incluye ningún itinerario, alojamiento, vuelo, reserva o documento familiar. La migración de IndexedDB elimina el antiguo viaje de demostración de los dispositivos que abrieron una versión anterior.
+
+La lectura de PDF se realiza en el navegador mediante PDF.js. El archivo no se envía a Vercel ni a servicios de inteligencia artificial y no se guarda automáticamente en Documentos. Antes de importar se muestra una vista previa; los horarios, precios y reservas detectados deben verificarse en sus fuentes oficiales. Los PDF escaneados sin una capa de texto requieren OCR previo.
 
 Safari puede liberar almacenamiento si el dispositivo necesita espacio o la web permanece mucho tiempo sin uso. TravelCaris no sustituye los sistemas oficiales y no debe ser la única copia de documentos esenciales.
 

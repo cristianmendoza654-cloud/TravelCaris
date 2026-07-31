@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { initialFlights } from '../domain/initialData';
-import type { FlightStatusResult } from '../domain/types';
+import type { Flight, FlightStatusResult } from '../domain/types';
 import {
   detectFlightChanges,
   flightNumberVariants,
@@ -9,21 +8,38 @@ import {
 } from './flightStatus';
 
 describe('normalización de números de vuelo', () => {
-  it('normaliza VY8475', () => {
-    expect(normalizeFlightNumber('VY8475')).toBe('VY8475');
-    expect(flightNumberVariants('VY 8475')).toContain('VY8475');
+  it('normaliza un número de vuelo genérico', () => {
+    expect(normalizeFlightNumber('TC1234')).toBe('TC1234');
+    expect(flightNumberVariants('TC 1234')).toContain('TC1234');
   });
 
   it('normaliza las variantes de easyJet sin duplicar el vuelo', () => {
-    expect(normalizeFlightNumber('U22315')).toBe('U22315');
-    expect(normalizeFlightNumber('U2 2315')).toBe('U22315');
-    expect(normalizeFlightNumber('EZY2315')).toBe('U22315');
-    expect(flightNumberVariants('U22315')).toEqual(expect.arrayContaining(['U22315', 'U2 2315', 'EZY2315']));
+    expect(normalizeFlightNumber('U21234')).toBe('U21234');
+    expect(normalizeFlightNumber('U2 1234')).toBe('U21234');
+    expect(normalizeFlightNumber('EZY1234')).toBe('U21234');
+    expect(flightNumberVariants('U21234')).toEqual(expect.arrayContaining(['U21234', 'U2 1234', 'EZY1234']));
   });
 });
 
 describe('detección de cambios de estado', () => {
-  const flight = initialFlights[0];
+  const flight = {
+    id: 'flight-test',
+    flightNumber: 'TC1234',
+    scheduledDate: '2027-09-03',
+    scheduledDepartureTime: '08:00',
+    status: 'Programado',
+    delayMinutes: 0,
+    departureTerminal: '',
+    arrivalTerminal: '',
+    gate: '',
+    estimatedDepartureTime: '',
+    estimatedArrivalTime: '',
+    arrivalAirport: 'Destino',
+    arrivalIata: 'DST',
+    actualDepartureTime: '',
+    actualArrivalTime: '',
+    lastCheckedAt: '',
+  } as Flight;
   const result = (value: Partial<FlightStatusResult>): FlightStatusResult => ({
     provider: 'AeroDataBox',
     checkedAt: '2026-08-01T04:00:00.000Z',
@@ -47,11 +63,11 @@ describe('detección de cambios de estado', () => {
   });
 
   it('marca como caducados los datos ausentes o antiguos', () => {
-    expect(isFlightDataStale(flight, new Date('2026-07-31T12:00:00Z'))).toBe(true);
+    expect(isFlightDataStale(flight, new Date('2027-09-03T07:00:00Z'))).toBe(true);
     expect(
       isFlightDataStale(
-        { ...flight, lastCheckedAt: '2026-08-01T02:00:00Z' },
-        new Date('2026-08-01T04:00:00Z'),
+        { ...flight, lastCheckedAt: '2027-09-03T04:00:00Z' },
+        new Date('2027-09-03T07:00:00Z'),
       ),
     ).toBe(true);
   });

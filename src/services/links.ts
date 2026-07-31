@@ -15,7 +15,7 @@ export function googleSearch(query: string) {
 }
 
 export function tripadvisorSearch(query: string) {
-  return `https://www.tripadvisor.es/Search?q=${encode(`${query} Londres`)}`;
+  return `https://www.tripadvisor.es/Search?q=${encode(query)}`;
 }
 
 export function shareText(title: string, lines: string[]) {

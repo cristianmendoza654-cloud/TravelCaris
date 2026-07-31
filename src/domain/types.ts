@@ -1,11 +1,3 @@
-export const tripDays = [
-  '2026-08-01',
-  '2026-08-02',
-  '2026-08-03',
-  '2026-08-04',
-  '2026-08-05',
-] as const;
-
 export type TripDay = string;
 
 export const tripStatuses = ['Próximo', 'En curso', 'Finalizado', 'Archivado'] as const;
@@ -186,7 +178,7 @@ export const exploreContextKinds = [
   'Actividad del itinerario',
   'Dirección escrita',
   'Marcador del mapa',
-  'Zona de Londres',
+  'Zona del destino',
 ] as const;
 export type ExploreContextKind = (typeof exploreContextKinds)[number];
 

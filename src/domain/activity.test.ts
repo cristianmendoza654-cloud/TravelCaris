@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import type { Activity } from './types';
 import { completeActivity, emptyWeeklyOpeningHours, isActivityStale } from './activity';
-import { initialActivities } from './initialData';
 
 describe('rich activity records', () => {
   it('mantiene siete días y varios intervalos en un horario semanal', () => {
@@ -11,12 +11,21 @@ describe('rich activity records', () => {
   });
 
   it('completa registros antiguos sin perder precio ni reserva', () => {
-    const source = initialActivities[0];
-    const legacy = { ...source, priceDetails: undefined, openingHours: undefined, reservationStatus: undefined } as unknown as typeof source;
+    const legacy = {
+      title: 'Actividad de prueba',
+      currency: 'EUR',
+      adultPrice: 12,
+      childPrice: 6,
+      estimatedTotalPrice: 30,
+      reservationDone: false,
+      reservationRequired: false,
+      status: 'Pendiente',
+    } as Activity;
     const completed = completeActivity(legacy);
     expect(completed.openingHours.Domingo.intervals).toEqual([]);
     expect(completed.reservationStatus).toBe('No necesaria');
     expect(completed.planType).toBe('Principal');
+    expect(completed.priceDetails.adult).toBe(12);
   });
 
   it('avisa cuando la verificación está pendiente o caducada', () => {

@@ -17,7 +17,7 @@ import type {
   Trip,
 } from '../domain/types';
 import { completeActivity } from '../domain/activity';
-import { londonTripId } from '../domain/initialData';
+import { legacyLondonTripId, starterTripId } from '../domain/initialData';
 
 class TravelDatabase extends Dexie {
   trips!: Table<Trip, string>;
@@ -65,7 +65,7 @@ class TravelDatabase extends Dexie {
       })
       .upgrade(async (transaction) => {
         const addTripId = (record: { tripId?: string }) => {
-          record.tripId ??= londonTripId;
+          record.tripId ??= legacyLondonTripId;
         };
         await Promise.all(
           ['activities', 'accommodations', 'transports', 'documents', 'expenses', 'packingItems', 'reminders'].map(
@@ -76,7 +76,7 @@ class TravelDatabase extends Dexie {
           .table('settings')
           .toCollection()
           .modify((settings: Partial<AppSettings>) => {
-            settings.activeTripId ??= londonTripId;
+            settings.activeTripId ??= legacyLondonTripId;
             settings.flightProvider ??= 'manual';
             settings.flightAutoUpdate ??= false;
             settings.flightNotifications ??= false;
@@ -112,6 +112,59 @@ class TravelDatabase extends Dexie {
           .toCollection()
           .modify((settings: Partial<AppSettings>) => {
             settings.placeInfoStaleDays ??= 30;
+          });
+      });
+    this.version(4)
+      .stores({
+        trips: 'id, status, startDate, endDate, destination',
+        activities: 'id, tripId, day, date, order, category, status, planType, verificationStatus, visited, favorite',
+        accommodations: 'id, tripId, startDate, endDate, active',
+        transports: 'id, tripId, date, type',
+        documents: 'id, tripId, type, date, important, activityId',
+        expenses: 'id, tripId, date, category, activityId',
+        packingItems: 'id, tripId, list, done, order',
+        reminders: 'id, tripId, date, done',
+        flights: 'id, tripId, scheduledDate, normalizedFlightNumber, status, lastCheckedAt',
+        flightStatusHistory: 'id, flightId, detectedAt, field, important',
+        flightAlerts: 'id, tripId, flightId, createdAt, type, read',
+        searchProviders: 'id, enabled, order, kind',
+        searchHistory: 'id, tripId, createdAt, providerId',
+        savedPlaces: 'id, tripId, category, favorite, createdAt',
+        settings: 'id',
+      })
+      .upgrade(async (transaction) => {
+        const flights = await transaction.table('flights').where('tripId').equals(legacyLondonTripId).toArray();
+        const flightIds = flights.map((flight: Flight) => flight.id);
+        const tripTables = [
+          'activities',
+          'accommodations',
+          'transports',
+          'documents',
+          'expenses',
+          'packingItems',
+          'reminders',
+          'flights',
+          'flightAlerts',
+          'searchHistory',
+          'savedPlaces',
+        ];
+
+        await Promise.all(
+          tripTables.map((table) => transaction.table(table).where('tripId').equals(legacyLondonTripId).delete()),
+        );
+        if (flightIds.length) {
+          await transaction.table('flightStatusHistory').where('flightId').anyOf(flightIds).delete();
+        }
+        await transaction.table('trips').delete(legacyLondonTripId);
+
+        const remainingTrip = await transaction.table('trips').toCollection().first();
+        await transaction
+          .table('settings')
+          .toCollection()
+          .modify((settings: Partial<AppSettings>) => {
+            if (settings.activeTripId === legacyLondonTripId) {
+              settings.activeTripId = remainingTrip?.id ?? starterTripId;
+            }
           });
       });
   }
