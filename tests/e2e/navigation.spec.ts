@@ -22,7 +22,11 @@ test('abre la importación privada de PDF', async ({ page }) => {
   await expect(page.locator('input[type="file"][accept*="pdf"]')).toHaveCount(1);
 });
 
-test('importa en WebKit móvil un PDF entregado con MIME genérico', async ({ page }) => {
+test('importa en WebKit móvil sin depender de APIs modernas ni del MIME', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(Blob.prototype, 'arrayBuffer', { value: undefined, configurable: true });
+    Object.defineProperty(globalThis, 'Worker', { value: undefined, configurable: true });
+  });
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: /principal/i });
   await navigation.getByRole('link', { name: /Más/i }).click();

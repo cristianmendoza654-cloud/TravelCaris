@@ -83,15 +83,18 @@ export async function extractPdfPages(file: File): Promise<string[]> {
   if (!file.size) throw new Error('El archivo está vacío o todavía no se ha descargado desde iCloud. Descárgalo en Archivos y vuelve a seleccionarlo.');
   if (file.size > 20 * 1024 * 1024) throw new Error('El PDF supera el límite de 20 MB.');
 
-  const data = new Uint8Array(await file.arrayBuffer());
+  const data = await readFileBytes(file);
   const signature = new TextDecoder('ascii').decode(data.slice(0, 1024));
   if (!signature.includes('%PDF-')) throw new Error('El archivo seleccionado no contiene un PDF válido.');
 
-  const [{ getDocument, GlobalWorkerOptions }, workerModule] = await Promise.all([
+  const [{ getDocument }, workerModule] = await Promise.all([
     import('pdfjs-dist/legacy/build/pdf.mjs'),
-    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url'),
+    import('pdfjs-dist/legacy/build/pdf.worker.min.mjs'),
   ]);
-  GlobalWorkerOptions.workerSrc = workerModule.default;
+
+  // Some iOS web views and installed PWAs cannot start PDF.js module workers
+  // reliably. Exposing the handler makes PDF.js parse locally on every browser.
+  (globalThis as typeof globalThis & { pdfjsWorker?: typeof workerModule }).pdfjsWorker = workerModule;
   const loadingTask = getDocument({ data });
   try {
     const document = await loadingTask.promise;
@@ -115,10 +118,31 @@ export async function extractPdfPages(file: File): Promise<string[]> {
     const message = reason instanceof Error ? reason.message : '';
     if (/password/i.test(message)) throw pdfReadError('El PDF está protegido con contraseña. Guarda una copia sin contraseña e inténtalo de nuevo.', reason);
     if (/invalid|malformed|corrupt/i.test(message)) throw pdfReadError('El PDF está dañado o utiliza un formato no compatible. Prueba a imprimirlo o exportarlo de nuevo como PDF.', reason);
-    throw pdfReadError('Safari no pudo analizar este PDF. Descárgalo primero en Archivos y prueba con una copia guardada localmente.', reason);
+    const detail = message.trim().replace(/\s+/g, ' ').slice(0, 160);
+    throw pdfReadError(
+      `El lector local no pudo analizar este PDF${detail ? ` (${detail})` : ''}. Prueba a guardarlo de nuevo como PDF o a importarlo desde Archivos.`,
+      reason,
+    );
   } finally {
     await loadingTask.destroy();
   }
+}
+
+function readFileBytes(file: File): Promise<Uint8Array> {
+  if (typeof file.arrayBuffer === 'function') {
+    return file.arrayBuffer().then((buffer) => new Uint8Array(buffer));
+  }
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error ?? new Error('No se pudo abrir el archivo seleccionado.'));
+    reader.onabort = () => reject(new Error('La lectura del archivo se canceló.'));
+    reader.onload = () => {
+      if (reader.result instanceof ArrayBuffer) resolve(new Uint8Array(reader.result));
+      else reject(new Error('El navegador no pudo entregar el contenido del archivo.'));
+    };
+    reader.readAsArrayBuffer(file);
+  });
 }
 
 function pdfReadError(message: string, cause: unknown) {
