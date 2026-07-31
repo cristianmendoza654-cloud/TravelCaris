@@ -30,9 +30,10 @@ describe('PWA and Vercel configuration', () => {
   it('registra un service worker con shell offline versionado', () => {
     const worker = readFileSync('public/sw.js', 'utf8');
     const entry = readFileSync('src/main.tsx', 'utf8');
-    expect(worker).toContain("CACHE_NAME = 'travelcaris-v4'");
+    expect(worker).toContain("CACHE_NAME = 'travelcaris-v5'");
     expect(worker).toContain("'/travel-hero.png'");
     expect(worker).toContain('/offline.html');
+    expect(worker).toContain("url.pathname.startsWith('/api/')");
     expect(entry).toContain("serviceWorker.register('/sw.js')");
   });
 

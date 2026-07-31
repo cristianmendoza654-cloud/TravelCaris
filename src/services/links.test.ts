@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { ExploreContext, SearchProvider } from '../domain/types';
-import { appleMapsSearch, buildProviderSearch, composeExploreQuery, googleMapsSearch, googleSearch, tripadvisorSearch } from './links';
+import { appleMapsSearch, buildProviderSearch, composeExploreQuery, googleMapsSearch, googleSearch, isSafeExternalUrl, tripadvisorSearch } from './links';
 
 describe('external links', () => {
   it('crea enlaces codificados para mapas y buscadores', () => {
@@ -10,6 +10,23 @@ describe('external links', () => {
     expect(appleMapsSearch('Centro Roma')).toBe('https://maps.apple.com/?q=Centro%20Roma');
     expect(googleSearch('farmacias cercanas')).toContain('farmacias%20cercanas');
     expect(tripadvisorSearch('pizza familiar Roma')).toContain('pizza%20familiar%20Roma');
+  });
+
+  it('rechaza protocolos que no sean web y protege proveedores importados', () => {
+    expect(isSafeExternalUrl('https://example.com')).toBe(true);
+    expect(isSafeExternalUrl('javascript:alert(1)')).toBe(false);
+    const provider = {
+      id: 'unsafe',
+      name: 'No seguro',
+      kind: 'custom' as const,
+      urlTemplate: 'javascript:alert(1)',
+      enabled: true,
+      supportsStableSearchUrl: true,
+      order: 0,
+      createdAt: '',
+      updatedAt: '',
+    };
+    expect(buildProviderSearch(provider, 'museos').url).toBe(googleSearch('museos'));
   });
 
   it('combina la consulta con el contexto sin duplicar la ciudad', () => {

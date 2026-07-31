@@ -67,7 +67,7 @@ import { emptyPriceDetails, emptyWeeklyOpeningHours, isActivityStale } from '../
 import { expenseTotals } from '../services/calculations';
 import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
 import { findItineraryGaps } from '../services/planning';
-import { appleMapsSearch, googleMapsSearch, shareText } from '../services/links';
+import { appleMapsSearch, googleMapsSearch, isSafeExternalUrl, shareText } from '../services/links';
 import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
 import {
   createActivity,
@@ -86,6 +86,7 @@ import {
   reorderActivities,
   restoreInitialData,
   saveActivity,
+  validateBackup,
 } from '../services/storage';
 import type { AppSnapshot } from '../services/storage';
 import {
@@ -788,8 +789,8 @@ function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleD
           <button aria-label="Duplicar actividad" title="Duplicar" onClick={async () => { await duplicateActivity(activity); await refresh(); notify('Actividad duplicada'); }}><ClipboardList size={18} /></button>
           <button aria-label="Compartir actividad" title="Compartir" onClick={doShare}><Share2 size={18} /></button>
           <a aria-label="Abrir mapa" title="Abrir mapa" href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer"><MapIcon size={18} /></a>
-          {activity.officialLink && <a aria-label="Abrir web oficial" title="Web oficial" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /></a>}
-          {activity.reservationLink && <a aria-label="Abrir reserva" title="Reserva" href={activity.reservationLink} target="_blank" rel="noreferrer"><FileText size={18} /></a>}
+          {isSafeExternalUrl(activity.officialLink) && <a aria-label="Abrir web oficial" title="Web oficial" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /></a>}
+          {isSafeExternalUrl(activity.reservationLink) && <a aria-label="Abrir reserva" title="Reserva" href={activity.reservationLink} target="_blank" rel="noreferrer"><FileText size={18} /></a>}
           <button aria-label="Marcar como realizada" title="Realizada" onClick={async () => { await saveActivity({ ...activity, visited: !activity.visited, status: activity.visited ? 'Pendiente' : 'Realizado' }); await refresh(); }}><Check size={18} /></button>
           <button aria-label="Eliminar actividad" title="Eliminar" onClick={async () => { if (confirm('¿Eliminar esta actividad?')) { await deleteActivity(activity.id); await refresh(); notify('Actividad eliminada'); } }}><Trash2 size={18} /></button>
           <button aria-label="Mover a otro día" title="Cambiar día" onClick={async () => { const next = availableDays[(availableDays.indexOf(activity.day) + 1) % availableDays.length]; await moveActivity(activity.id, next); await refresh(); notify(`Movida a ${formatDate(next)}`); navigate('/itinerario'); }}><CalendarDays size={18} /></button>
@@ -882,8 +883,8 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
         <details>
           <summary>Ubicación y horarios de apertura</summary>
           <div className="two-cols">
-            <label>Latitud<input type="number" step="any" value={form.lat ?? ''} onChange={(event) => set('lat', Number(event.target.value))} /></label>
-            <label>Longitud<input type="number" step="any" value={form.lng ?? ''} onChange={(event) => set('lng', Number(event.target.value))} /></label>
+            <label>Latitud<input type="number" step="any" value={form.lat ?? ''} onChange={(event) => set('lat', event.target.value ? Number(event.target.value) : undefined)} /></label>
+            <label>Longitud<input type="number" step="any" value={form.lng ?? ''} onChange={(event) => set('lng', event.target.value ? Number(event.target.value) : undefined)} /></label>
           </div>
           <WeeklyHoursEditor value={form.openingHours ?? emptyWeeklyOpeningHours()} onChange={(value) => set('openingHours', value)} />
           <label>Fechas u horarios especiales<textarea value={form.specialHours ?? ''} onChange={(event) => set('specialHours', event.target.value)} /></label>
@@ -1197,31 +1198,41 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
         <div className="grid-actions">
           <button onClick={exportJson}><Download size={18} /> Exportar JSON</button>
           <button onClick={() => downloadText(`${backupPrefix}-itinerario.txt`, snapshot.activities.map((a) => `${a.day} ${a.startTime} - ${a.title}`).join('\n'))}>Itinerario texto</button>
-          <button onClick={() => downloadText(`${backupPrefix}-gastos.csv`, `concepto,categoria,fecha,importe,moneda\n${snapshot.expenses.map((e) => `${e.concept},${e.category},${e.date},${e.amount},${e.currency}`).join('\n')}`)}>Gastos CSV</button>
+          <button onClick={() => downloadText(`${backupPrefix}-gastos.csv`, expensesCsv(snapshot.expenses))}>Gastos CSV</button>
           <button onClick={() => downloadText(`${backupPrefix}-equipaje.txt`, snapshot.packingItems.map((i) => `${i.done ? '[x]' : '[ ]'} ${i.title}`).join('\n'))}>Equipaje</button>
         </div>
         <label className="file-button"><Upload size={18} /> Importar copia JSON<input type="file" accept="application/json" onChange={async (event) => {
           const file = event.target.files?.[0];
           if (!file) return;
+          if (file.size > 50 * 1024 * 1024) {
+            notify('La copia supera el límite de 50 MB');
+            event.target.value = '';
+            return;
+          }
           try {
-            setPreview(JSON.parse(await file.text()) as BackupData);
+            const parsed: unknown = JSON.parse(await file.text());
+            if (!validateBackup(parsed)) throw new Error('Formato incorrecto');
+            setPreview(parsed);
             notify('Vista previa cargada');
           } catch {
-            notify('El JSON no es válido');
+            setPreview(null);
+            notify('El archivo no es una copia válida de TravelCaris');
+          } finally {
+            event.target.value = '';
           }
         }} /></label>
       </div>
-      {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities?.length ?? 0} actividades, {preview.expenses?.length ?? 0} gastos.</p><button className="primary" onClick={async () => { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); }}>Sustituir datos</button><button className="secondary" onClick={async () => { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); }}>Combinar</button></div>}
+      {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities.length} actividades, {preview.expenses.length} gastos.</p><button className="primary" onClick={async () => { try { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); } catch { notify('No se pudo importar la copia'); } }}>Sustituir datos</button><button className="secondary" onClick={async () => { try { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); } catch { notify('No se pudo combinar la copia'); } }}>Combinar</button></div>}
       <div className="danger-zone">
         <button onClick={async () => { if (confirm('¿Vaciar todos los datos locales y volver al inicio?')) { await restoreInitialData(); await refresh(); notify('Datos locales vaciados'); } }}>Vaciar datos locales</button>
-        <p>TravelCaris 3.1. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.2. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
 }
 
 function DayTabs({ selected, days, onSelect }: { selected: TripDay; days: string[]; onSelect: (day: TripDay) => void }) {
-  return <div className="tabs">{days.map((day) => <button key={day} className={selected === day ? 'selected' : ''} onClick={() => onSelect(day)}>{day.slice(8)} ago</button>)}</div>;
+  return <div className="tabs">{days.map((day) => <button key={day} className={selected === day ? 'selected' : ''} onClick={() => onSelect(day)}>{formatDayTab(day)}</button>)}</div>;
 }
 
 function DaySelect({ value, days, onChange }: { value: TripDay; days: string[]; onChange: (day: TripDay) => void }) {
@@ -1265,6 +1276,12 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat('es-ES', { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date(`${value}T12:00:00`));
 }
 
+function formatDayTab(value: string) {
+  return new Intl.DateTimeFormat('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })
+    .format(new Date(`${value}T12:00:00`))
+    .replace(/\.$/g, '');
+}
+
 function recommendedDeparture(time: string) {
   const [hours, minutes] = time.split(':').map(Number);
   const date = new Date(2026, 7, 1, hours, minutes);
@@ -1282,12 +1299,7 @@ function priceLabel(activity: Activity) {
 }
 
 function isUrl(value: string) {
-  try {
-    new URL(value);
-    return true;
-  } catch {
-    return false;
-  }
+  return isSafeExternalUrl(value);
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -1301,6 +1313,16 @@ function downloadBlob(blob: Blob, filename: string) {
 
 function downloadText(filename: string, text: string) {
   downloadBlob(new Blob([text], { type: 'text/plain;charset=utf-8' }), filename);
+}
+
+function expensesCsv(expenses: Expense[]) {
+  const rows = expenses.map((expense) => [expense.concept, expense.category, expense.date, expense.amount, expense.currency].map(csvCell).join(','));
+  return `concepto,categoria,fecha,importe,moneda\n${rows.join('\n')}`;
+}
+
+function csvCell(value: string | number) {
+  const text = String(value);
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
 function tripDateRange(startDate: string, endDate: string) {

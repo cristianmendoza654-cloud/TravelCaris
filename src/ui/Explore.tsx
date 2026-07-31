@@ -13,7 +13,7 @@ import { v4 as uuid } from 'uuid';
 import type { Category, ExploreContext, SearchProvider, TripDay } from '../domain/types';
 import { categories, exploreContextKinds } from '../domain/types';
 import { imageFileToStoredImage } from '../services/files';
-import { buildProviderSearch, composeExploreQuery } from '../services/links';
+import { buildProviderSearch, composeExploreQuery, isSafeExternalUrl } from '../services/links';
 import {
   clearSearchHistory,
   createActivity,
@@ -241,7 +241,7 @@ function ExploreLists({ snapshot, refresh, notify, onSearch }: ExploreProps & { 
           {snapshot.savedPlaces.map((place) => (
             <div className="saved-place-row" key={place.id}>
               <div><strong>{place.name}</strong><small>{place.category} · {place.address}</small></div>
-              {place.sourceLink && <a href={place.sourceLink} target="_blank" rel="noreferrer" title="Abrir enlace"><ExternalLink size={17} /></a>}
+              {isSafeExternalUrl(place.sourceLink) && <a href={place.sourceLink} target="_blank" rel="noreferrer" title="Abrir enlace"><ExternalLink size={17} /></a>}
               <button title="Eliminar" aria-label={`Eliminar ${place.name}`} onClick={async () => { await deleteSavedPlace(place.id); await refresh(); notify('Lugar eliminado'); }}><Trash2 size={17} /></button>
             </div>
           ))}
@@ -270,7 +270,8 @@ function PlaceEditor({ snapshot, query, onClose, refresh, notify }: ExploreProps
   const set = <K extends keyof typeof form>(key: K, value: (typeof form)[K]) => setForm((current) => ({ ...current, [key]: value }));
   const submit = async () => {
     if (!form.name.trim()) return notify('Escribe el nombre del lugar');
-    if (form.link && !/^https?:\/\//i.test(form.link)) return notify('El enlace no es válido');
+    if (form.link && !isSafeExternalUrl(form.link)) return notify('El enlace no es válido');
+    if (form.reservationLink && !isSafeExternalUrl(form.reservationLink)) return notify('El enlace de reserva no es válido');
     if (form.destination === 'favorite') {
       await savePlace({ name: form.name.trim(), address: form.address, category: form.category, sourceLink: form.link, image: form.image || undefined, notes: form.notes, favorite: true });
     } else {

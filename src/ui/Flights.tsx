@@ -26,6 +26,7 @@ import {
   providerLabel,
   recommendedRefreshInterval,
 } from '../services/flightStatus';
+import { isSafeExternalUrl } from '../services/links';
 import {
   applyFlightStatusResult,
   clearFlightStatusCache,
@@ -569,7 +570,7 @@ function OfficialFlightLinks({ flight }: { flight: Flight }) {
 }
 
 function OfficialLink({ href, label }: { href: string; label: string }) {
-  if (!href) return null;
+  if (!isSafeExternalUrl(href)) return null;
   return <a className="external-button" href={href} target="_blank" rel="noreferrer"><ExternalLink size={17} /> {label}</a>;
 }
 

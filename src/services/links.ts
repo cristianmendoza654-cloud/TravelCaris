@@ -18,6 +18,16 @@ export function tripadvisorSearch(query: string) {
   return `https://www.tripadvisor.es/Search?q=${encode(query)}`;
 }
 
+export function isSafeExternalUrl(value: string) {
+  if (!value.trim()) return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:';
+  } catch {
+    return false;
+  }
+}
+
 export function shareText(title: string, lines: string[]) {
   return `${title}\n${lines.filter(Boolean).join('\n')}`;
 }
@@ -31,10 +41,11 @@ export function composeExploreQuery(query: string, context: ExploreContext, dest
 
 export function buildProviderSearch(provider: SearchProvider, query: string) {
   const encoded = encode(query);
+  const candidate = provider.urlTemplate.includes('{query}')
+    ? provider.urlTemplate.split('{query}').join(encoded)
+    : provider.urlTemplate;
   return {
-    url: provider.urlTemplate.includes('{query}')
-      ? provider.urlTemplate.split('{query}').join(encoded)
-      : provider.urlTemplate,
+    url: isSafeExternalUrl(candidate) ? candidate : googleSearch(query),
     copyQuery: !provider.supportsStableSearchUrl,
   };
 }

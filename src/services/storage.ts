@@ -34,7 +34,8 @@ import type {
 } from '../domain/types';
 import { db } from './db';
 import { detectFlightChanges, flightNumberVariants, normalizeFlightNumber } from './flightStatus';
-import type { PdfImportDraft } from './pdfImport';
+import { isSafeExternalUrl } from './links';
+import { validatePdfImportDraft, type PdfImportDraft } from './pdfImport';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
@@ -363,6 +364,8 @@ export async function selectTrip(tripId: string) {
 }
 
 export async function applyPdfImport(data: PdfImportDraft, mode: 'replace' | 'new') {
+  const validationErrors = validatePdfImportDraft(data);
+  if (validationErrors.length) throw new Error(validationErrors[0]);
   await ensureInitialData();
   const currentId = await activeTripId();
   const currentTrip = await db.trips.get(currentId);
@@ -680,7 +683,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.1.0',
+    version: '3.2.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,
@@ -702,13 +705,35 @@ export async function exportBackup(): Promise<BackupData> {
 
 export function validateBackup(data: unknown): data is BackupData {
   if (!data || typeof data !== 'object') return false;
-  const candidate = data as Partial<BackupData>;
+  const candidate = data as Partial<BackupData> & Record<string, unknown>;
+  const requiredArrays = [
+    'trips',
+    'activities',
+    'accommodations',
+    'transports',
+    'documents',
+    'expenses',
+    'packingItems',
+    'reminders',
+    'flights',
+    'flightStatusHistory',
+    'flightAlerts',
+  ];
+  const optionalWebUrl = (value: unknown) => typeof value !== 'string' || !value || isSafeExternalUrl(value);
+  const safeLinks =
+    (candidate.activities ?? []).every((activity) => optionalWebUrl(activity.officialLink) && optionalWebUrl(activity.reservationLink) && optionalWebUrl(activity.sourceUrl)) &&
+    (candidate.flights ?? []).every((flight) => optionalWebUrl(flight.officialTrackingUrl) && optionalWebUrl(flight.departureAirportUrl) && optionalWebUrl(flight.arrivalAirportUrl)) &&
+    (candidate.searchProviders ?? []).every((provider) => isSafeExternalUrl(provider.urlTemplate.replace('{query}', 'consulta'))) &&
+    (candidate.savedPlaces ?? []).every((place) => optionalWebUrl(place.sourceLink));
   return (
+    requiredArrays.every((key) => Array.isArray(candidate[key])) &&
     Array.isArray(candidate.trips) &&
-    Array.isArray(candidate.activities) &&
-    Array.isArray(candidate.flights) &&
-    Array.isArray(candidate.flightAlerts) &&
-    !!candidate.settings
+    candidate.trips.length > 0 &&
+    candidate.trips.every((trip) => typeof trip?.id === 'string' && typeof trip?.name === 'string') &&
+    !!candidate.settings &&
+    typeof candidate.settings === 'object' &&
+    candidate.settings.id === 'settings' &&
+    safeLinks
   );
 }
 

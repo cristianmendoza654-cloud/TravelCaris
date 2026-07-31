@@ -1,4 +1,6 @@
 import type { Accommodation, Activity, Flight, Trip } from '../domain/types';
+import { categories } from '../domain/types';
+import { travelCarisAiFormat } from './aiItinerary';
 
 export interface PdfImportDraft {
   fileName: string;
@@ -7,6 +9,7 @@ export interface PdfImportDraft {
   accommodations: Array<Omit<Accommodation, 'id' | 'tripId' | 'createdAt' | 'updatedAt'>>;
   flights: Array<Partial<Flight> & Pick<Flight, 'flightNumber' | 'scheduledDate'>>;
   warnings: string[];
+  sourceFormat?: 'travelcaris-ai-v1' | 'general';
 }
 
 const months: Record<string, number> = {
@@ -118,6 +121,9 @@ export function parseTravelDocumentText(pages: string[], fileName = 'viaje.pdf')
     throw new Error('No se ha encontrado texto suficiente. El PDF puede estar escaneado o protegido.');
   }
 
+  const structuredDraft = parseTravelCarisAiDocument(lines, fileName);
+  if (structuredDraft) return structuredDraft;
+
   const range = detectDateRange(lines);
   const destination = detectDestination(lines);
   const warnings: string[] = [];
@@ -149,6 +155,240 @@ export function parseTravelDocumentText(pages: string[], fileName = 'viaje.pdf')
     accommodations,
     flights,
     warnings,
+    sourceFormat: 'general',
+  };
+}
+
+export function validatePdfImportDraft(draft: PdfImportDraft) {
+  const errors: string[] = [];
+  if (!draft.trip.name?.trim()) errors.push('Falta el nombre del viaje.');
+  if (!draft.trip.destination?.trim()) errors.push('Falta el destino.');
+  if (!validIsoDate(draft.trip.startDate) || !validIsoDate(draft.trip.endDate) || draft.trip.endDate < draft.trip.startDate) {
+    errors.push('Las fechas del viaje no son válidas.');
+  }
+  if (draft.activities.length > 500 || draft.accommodations.length > 50 || draft.flights.length > 50) {
+    errors.push('El PDF contiene más elementos de los que se pueden importar con seguridad.');
+  }
+  if (!draft.activities.length && !draft.accommodations.length && !draft.flights.length) {
+    errors.push('El PDF no contiene actividades, alojamientos ni vuelos para importar.');
+  }
+  draft.activities.forEach((activity, index) => {
+    if (!activity.title?.trim()) errors.push(`La actividad ${index + 1} no tiene título.`);
+    if (!validIsoDate(activity.day) || activity.day < draft.trip.startDate || activity.day > draft.trip.endDate) {
+      errors.push(`La actividad ${index + 1} está fuera de las fechas del viaje.`);
+    }
+    if (activity.startTime && !validTime(activity.startTime)) errors.push(`La actividad ${index + 1} tiene una hora no válida.`);
+  });
+  draft.accommodations.forEach((accommodation, index) => {
+    if (!accommodation.name?.trim()) errors.push(`El alojamiento ${index + 1} no tiene nombre.`);
+    if (!validIsoDate(accommodation.startDate) || !validIsoDate(accommodation.endDate) || accommodation.endDate < accommodation.startDate) {
+      errors.push(`El alojamiento ${index + 1} tiene fechas no válidas.`);
+    }
+  });
+  draft.flights.forEach((flight, index) => {
+    if (!flight.flightNumber?.trim()) errors.push(`El vuelo ${index + 1} no tiene número.`);
+    if (!validIsoDate(flight.scheduledDate)) errors.push(`El vuelo ${index + 1} tiene una fecha no válida.`);
+  });
+  return [...new Set(errors)];
+}
+
+interface StructuredSection {
+  name: string;
+  fields: Record<string, string>;
+}
+
+function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImportDraft | null {
+  const markerIndex = lines.findIndex((line) => fold(line).toUpperCase() === travelCarisAiFormat);
+  if (markerIndex < 0) return null;
+
+  const sections = structuredSections(lines.slice(markerIndex + 1));
+  const tripSection = sections.find((section) => section.name === 'VIAJE');
+  if (!tripSection) throw new Error('El anexo de TravelCaris no contiene el bloque [VIAJE].');
+
+  const warnings: string[] = [];
+  const fallbackDate = new Date().toISOString().slice(0, 10);
+  const destination = field(tripSection, 'DESTINO') || 'Destino por revisar';
+  const startDate = validIsoDate(field(tripSection, 'INICIO')) ? field(tripSection, 'INICIO') : fallbackDate;
+  const endCandidate = field(tripSection, 'FIN');
+  const endDate = validIsoDate(endCandidate) && endCandidate >= startDate ? endCandidate : startDate;
+  if (!validIsoDate(field(tripSection, 'INICIO')) || !validIsoDate(endCandidate)) {
+    warnings.push('El anexo estructurado no incluía fechas válidas. Revísalas antes de importar.');
+  }
+
+  const activities = sections
+    .filter((section) => section.name === 'ACTIVIDAD')
+    .map((section) => structuredActivity(section, startDate))
+    .filter((activity): activity is PdfImportDraft['activities'][number] => Boolean(activity));
+  const accommodations = sections
+    .filter((section) => section.name === 'ALOJAMIENTO')
+    .map((section, index) => structuredAccommodation(section, startDate, endDate, index === 0))
+    .filter((accommodation): accommodation is PdfImportDraft['accommodations'][number] => Boolean(accommodation));
+  const flights = sections
+    .filter((section) => section.name === 'VUELO')
+    .map((section) => structuredFlight(section, startDate))
+    .filter((flight): flight is PdfImportDraft['flights'][number] => Boolean(flight));
+
+  if (!activities.length) warnings.push('El anexo no contiene actividades válidas.');
+  if (activities.some((activity) => activity.day < startDate || activity.day > endDate)) {
+    warnings.push('Hay actividades fuera de las fechas del viaje. Corrígelas en la vista previa.');
+  }
+  if (!accommodations.length) warnings.push('El anexo no contiene alojamientos.');
+  if (!flights.length) warnings.push('El anexo no contiene vuelos.');
+
+  return {
+    fileName,
+    trip: {
+      name: field(tripSection, 'NOMBRE') || `Viaje a ${destination}`,
+      destination,
+      country: field(tripSection, 'PAIS') || inferCountry(destination),
+      startDate,
+      endDate,
+    },
+    activities: uniqueBy(activities, (item) => `${item.day}|${item.startTime}|${fold(item.title)}`),
+    accommodations: uniqueBy(accommodations, (item) => `${fold(item.name)}|${fold(item.address)}`),
+    flights: uniqueBy(flights, (item) => `${item.flightNumber}|${item.scheduledDate}`),
+    warnings,
+    sourceFormat: 'travelcaris-ai-v1',
+  };
+}
+
+function structuredSections(lines: string[]) {
+  const sections: StructuredSection[] = [];
+  let current: StructuredSection | null = null;
+  let lastKey = '';
+
+  const finish = () => {
+    if (current) sections.push(current);
+    current = null;
+    lastKey = '';
+  };
+
+  for (const line of lines) {
+    const sectionMatch = line.match(/^\[([A-Z_]+)\]$/i);
+    if (sectionMatch) {
+      const name = sectionMatch[1].toUpperCase();
+      if (name.startsWith('FIN_')) {
+        finish();
+        if (name === 'FIN_TRAVELCARIS') break;
+      } else {
+        finish();
+        current = { name, fields: {} };
+      }
+      continue;
+    }
+    if (!current) continue;
+    const fieldMatch = line.match(/^([\p{L}_ ]{2,32}):\s*(.*)$/u);
+    if (fieldMatch) {
+      lastKey = fieldKey(fieldMatch[1]);
+      current.fields[lastKey] = cleanLine(fieldMatch[2]);
+    } else if (lastKey) {
+      current.fields[lastKey] = cleanLine(`${current.fields[lastKey]} ${line}`);
+    }
+  }
+  finish();
+  return sections;
+}
+
+function structuredActivity(section: StructuredSection, fallbackDate: string): PdfImportDraft['activities'][number] | null {
+  const title = field(section, 'TITULO');
+  if (!title) return null;
+  const categoryValue = field(section, 'CATEGORIA');
+  const category = categories.find((item) => fold(item).toUpperCase() === fold(categoryValue).toUpperCase()) ?? inferCategory(`${title} ${categoryValue}`);
+  const currency = field(section, 'MONEDA').toUpperCase() === 'GBP' ? 'GBP' : 'EUR';
+  const total = positiveNumber(field(section, 'PRECIO_TOTAL'));
+  const reservation = reservationStatus(field(section, 'RESERVA'));
+  const lat = coordinate(field(section, 'LATITUD'), -90, 90);
+  const lng = coordinate(field(section, 'LONGITUD'), -180, 180);
+
+  return {
+    title,
+    description: field(section, 'DESCRIPCION'),
+    day: validIsoDate(field(section, 'FECHA')) ? field(section, 'FECHA') : fallbackDate,
+    startTime: validTime(field(section, 'INICIO')) ? field(section, 'INICIO') : '10:00',
+    endTime: validTime(field(section, 'FIN')) ? field(section, 'FIN') : '',
+    estimatedDurationMinutes: positiveInteger(field(section, 'DURACION_MIN')) || 60,
+    category,
+    address: field(section, 'DIRECCION'),
+    lat,
+    lng,
+    notes: field(section, 'NOTAS'),
+    reservationRequired: ['Necesaria', 'Pendiente', 'Reservada'].includes(reservation),
+    reservationDone: reservation === 'Reservada',
+    reservationStatus: reservation,
+    reservationLink: safeHttpUrl(field(section, 'ENLACE_RESERVA')),
+    officialLink: safeHttpUrl(field(section, 'ENLACE_OFICIAL')),
+    status: 'Pendiente',
+    sourceName: 'PDF preparado para TravelCaris',
+    sourceUrl: safeHttpUrl(field(section, 'ENLACE_OFICIAL')),
+    verificationStatus: 'Pendiente de verificar',
+    verificationNote: 'Comprueba horarios, precios y reservas en la fuente oficial.',
+    priceDetails: {
+      kind: total ? 'Aproximado' : 'Desconocido',
+      adult: 0,
+      child: 0,
+      baby: 0,
+      family: 0,
+      totalEstimate: total,
+      currency,
+      unit: 'actividad',
+      note: total ? 'Estimación incluida en el PDF.' : '',
+    },
+    estimatedTotalPrice: total,
+    currency,
+    environment: environment(field(section, 'ENTORNO')),
+    rainPlan: field(section, 'PLAN_LLUVIA'),
+    accessibility: field(section, 'ACCESIBILIDAD'),
+  };
+}
+
+function structuredAccommodation(
+  section: StructuredSection,
+  fallbackStart: string,
+  fallbackEnd: string,
+  active: boolean,
+): PdfImportDraft['accommodations'][number] | null {
+  const name = field(section, 'NOMBRE');
+  if (!name) return null;
+  return {
+    name,
+    address: field(section, 'DIRECCION'),
+    phone: field(section, 'TELEFONO'),
+    checkIn: validTime(field(section, 'CHECK_IN')) ? field(section, 'CHECK_IN') : '',
+    checkOut: validTime(field(section, 'CHECK_OUT')) ? field(section, 'CHECK_OUT') : '',
+    startDate: validIsoDate(field(section, 'INICIO')) ? field(section, 'INICIO') : fallbackStart,
+    endDate: validIsoDate(field(section, 'FIN')) ? field(section, 'FIN') : fallbackEnd,
+    entryInstructions: '',
+    luggageNotes: '',
+    notes: field(section, 'NOTAS'),
+    lat: coordinate(field(section, 'LATITUD'), -90, 90),
+    lng: coordinate(field(section, 'LONGITUD'), -180, 180),
+    images: [],
+    active,
+  };
+}
+
+function structuredFlight(section: StructuredSection, fallbackDate: string): PdfImportDraft['flights'][number] | null {
+  const flightNumber = field(section, 'NUMERO').replace(/\s/g, '').toUpperCase();
+  if (!flightNumber) return null;
+  const departureIata = field(section, 'ORIGEN_IATA').toUpperCase();
+  const arrivalIata = field(section, 'DESTINO_IATA').toUpperCase();
+  return {
+    airline: field(section, 'COMPANIA'),
+    airlineIata: flightNumber.match(/^[A-Z0-9]{2,3}/)?.[0] ?? '',
+    flightNumber,
+    scheduledDate: validIsoDate(field(section, 'FECHA')) ? field(section, 'FECHA') : fallbackDate,
+    departureAirport: field(section, 'ORIGEN'),
+    departureIata,
+    arrivalAirport: field(section, 'DESTINO'),
+    arrivalIata,
+    scheduledDepartureTime: validTime(field(section, 'SALIDA')) ? field(section, 'SALIDA') : '',
+    scheduledArrivalTime: validTime(field(section, 'LLEGADA')) ? field(section, 'LLEGADA') : '',
+    status: 'Programado',
+    includedBaggage: field(section, 'EQUIPAJE'),
+    notes: field(section, 'NOTAS'),
+    officialTrackingUrl: safeHttpUrl(field(section, 'ENLACE_OFICIAL')) || inferAirlineUrl(flightNumber),
+    departureAirportUrl: airportOfficialUrls[departureIata] ?? '',
+    arrivalAirportUrl: airportOfficialUrls[arrivalIata] ?? '',
   };
 }
 
@@ -422,6 +662,66 @@ function inferAirlineUrl(flightNumber: string) {
   if (normalized.startsWith('FR')) return 'https://www.ryanair.com/es/es/lp/travel-updates';
   if (normalized.startsWith('BA')) return 'https://www.britishairways.com/travel/flightstatus/public/es_es';
   return '';
+}
+
+function field(section: StructuredSection, key: string) {
+  return section.fields[fieldKey(key)] ?? '';
+}
+
+function fieldKey(value: string) {
+  return fold(value).toUpperCase().trim().replace(/\s+/g, '_');
+}
+
+function validIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T12:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function validTime(value: string) {
+  return /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value);
+}
+
+function positiveNumber(value: string) {
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function positiveInteger(value: string) {
+  return Math.round(positiveNumber(value));
+}
+
+function coordinate(value: string, min: number, max: number) {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : undefined;
+}
+
+function safeHttpUrl(value: string) {
+  if (!value.trim()) return '';
+  try {
+    const url = new URL(value);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : '';
+  } catch {
+    return '';
+  }
+}
+
+function reservationStatus(value: string): Activity['reservationStatus'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'RECOMENDADA') return 'Recomendada';
+  if (normalized === 'NECESARIA') return 'Necesaria';
+  if (normalized === 'PENDIENTE') return 'Pendiente';
+  if (normalized === 'RESERVADA') return 'Reservada';
+  return 'No necesaria';
+}
+
+function environment(value: string): Activity['environment'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'INTERIOR') return 'Interior';
+  if (normalized === 'EXTERIOR') return 'Exterior';
+  if (normalized === 'MIXTO') return 'Mixto';
+  return 'Sin indicar';
 }
 
 function cleanLine(value: string) {

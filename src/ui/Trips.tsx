@@ -1,9 +1,10 @@
-import { Check, FileUp, LoaderCircle, MapPin, Plus, ShieldCheck, X } from 'lucide-react';
+import { Check, FileUp, LoaderCircle, MapPin, Plus, ShieldCheck, Sparkles, Trash2, X } from 'lucide-react';
 import { useState } from 'react';
-import type { TripStatus } from '../domain/types';
-import { parseTravelPdf, type PdfImportDraft } from '../services/pdfImport';
+import { categories, type TripStatus } from '../domain/types';
+import { parseTravelPdf, validatePdfImportDraft, type PdfImportDraft } from '../services/pdfImport';
 import type { AppSnapshot } from '../services/storage';
 import { applyPdfImport, createTrip, saveTrip, selectTrip } from '../services/storage';
+import { AiItineraryPanel } from './AiItinerary';
 
 interface TripsProps {
   snapshot: AppSnapshot;
@@ -14,19 +15,22 @@ interface TripsProps {
 export function TripsPanel({ snapshot, refresh, notify }: TripsProps) {
   const [showNew, setShowNew] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [showAi, setShowAi] = useState(false);
   return (
     <div className="page-stack">
       <section className="form-card">
         <div className="section-heading">
           <div><p className="eyebrow">TravelCaris</p><h2>Mis viajes</h2></div>
           <div className="button-row">
-            <button onClick={() => { setShowImport((value) => !value); setShowNew(false); }}><FileUp size={18} /> Importar PDF</button>
-            <button className="primary" onClick={() => { setShowNew((value) => !value); setShowImport(false); }}><Plus size={18} /> Nuevo</button>
+            <button onClick={() => { setShowImport((value) => !value); setShowNew(false); setShowAi(false); }}><FileUp size={18} /> Importar PDF</button>
+            <button onClick={() => { setShowAi((value) => !value); setShowNew(false); setShowImport(false); }}><Sparkles size={18} /> Crear con IA</button>
+            <button className="primary" onClick={() => { setShowNew((value) => !value); setShowImport(false); setShowAi(false); }}><Plus size={18} /> Nuevo</button>
           </div>
         </div>
         <p className="muted">Cada viaje mantiene por separado sus vuelos, actividades, documentos y gastos.</p>
       </section>
       {showImport && <PdfImportPanel snapshot={snapshot} refresh={refresh} notify={notify} onClose={() => setShowImport(false)} />}
+      {showAi && <AiItineraryPanel trip={snapshot.activeTrip} notify={notify} onClose={() => setShowAi(false)} onImport={() => { setShowAi(false); setShowImport(true); }} />}
       {showNew && <NewTripForm onCreated={async (tripId) => { await selectTrip(tripId); await refresh(); setShowNew(false); notify('Viaje creado y seleccionado'); }} />}
       <div className="trip-list">
         {snapshot.trips.map((trip) => (
@@ -129,8 +133,9 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
             <div><strong>{draft.accommodations.length}</strong><span>Alojamientos</span></div>
             <div><strong>{draft.flights.length}</strong><span>Vuelos</span></div>
           </div>
+          {draft.sourceFormat === 'travelcaris-ai-v1' && <div className="notice notice-neutral"><Check size={18} /><p><strong>Formato TravelCaris IA detectado.</strong> Los bloques estructurados se han leído con prioridad.</p></div>}
           {draft.warnings.length > 0 && <div className="notice notice-warning"><div><strong>Revisión necesaria</strong>{draft.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></div>}
-          <ImportDetails draft={draft} />
+          <ImportDetails draft={draft} onChange={setDraft} />
           <div className="segmented-control pdf-import-mode" aria-label="Destino de la importación">
             <button className={mode === 'replace' ? 'selected' : ''} onClick={() => setMode('replace')}>Reemplazar abierto</button>
             <button className={mode === 'new' ? 'selected' : ''} onClick={() => setMode('new')}>Crear viaje nuevo</button>
@@ -142,8 +147,9 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
               className="primary"
               disabled={loading}
               onClick={async () => {
-                if (!draft.trip.name.trim() || !draft.trip.destination.trim() || draft.trip.endDate < draft.trip.startDate) {
-                  setError('Revisa el nombre, el destino y las fechas.');
+                const validationErrors = validatePdfImportDraft(draft);
+                if (validationErrors.length) {
+                  setError(validationErrors[0]);
                   return;
                 }
                 setLoading(true);
@@ -169,20 +175,61 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
   );
 }
 
-function ImportDetails({ draft }: { draft: PdfImportDraft }) {
+function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (draft: PdfImportDraft) => void }) {
+  const updateActivity = (index: number, patch: Partial<PdfImportDraft['activities'][number]>) => {
+    onChange({ ...draft, activities: draft.activities.map((item, current) => current === index ? { ...item, ...patch } : item) });
+  };
+  const updateAccommodation = (index: number, patch: Partial<PdfImportDraft['accommodations'][number]>) => {
+    onChange({ ...draft, accommodations: draft.accommodations.map((item, current) => current === index ? { ...item, ...patch } : item) });
+  };
+  const updateFlight = (index: number, patch: Partial<PdfImportDraft['flights'][number]>) => {
+    onChange({ ...draft, flights: draft.flights.map((item, current) => current === index ? { ...item, ...patch } : item) });
+  };
+
   return (
     <div className="import-details">
       <details open>
         <summary>Itinerario detectado</summary>
-        {draft.activities.length ? draft.activities.map((item, index) => <p key={`${item.day}-${item.startTime}-${index}`}><strong>{item.day} {item.startTime}</strong> · {item.title}</p>) : <p className="muted">Sin actividades detectadas.</p>}
+        {draft.activities.length ? draft.activities.map((item, index) => (
+          <div className="import-edit-row" key={`${item.day}-${item.startTime}-${index}`}>
+            <div className="import-activity-grid">
+              <label>Fecha<input type="date" value={item.day} onChange={(event) => updateActivity(index, { day: event.target.value })} /></label>
+              <label>Hora<input type="time" value={item.startTime ?? ''} onChange={(event) => updateActivity(index, { startTime: event.target.value })} /></label>
+              <label>Categoría<select value={item.category ?? 'Otros'} onChange={(event) => updateActivity(index, { category: event.target.value as PdfImportDraft['activities'][number]['category'] })}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
+              <label className="import-title-field">Actividad<input value={item.title} onChange={(event) => updateActivity(index, { title: event.target.value })} /></label>
+              <label className="import-address-field">Dirección<input value={item.address ?? ''} onChange={(event) => updateActivity(index, { address: event.target.value })} /></label>
+            </div>
+            <button className="icon-button" aria-label={`Eliminar ${item.title}`} title="Eliminar" onClick={() => onChange({ ...draft, activities: draft.activities.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+          </div>
+        )) : <p className="muted">Sin actividades detectadas.</p>}
       </details>
       <details>
         <summary>Alojamientos detectados</summary>
-        {draft.accommodations.length ? draft.accommodations.map((item, index) => <p key={`${item.name}-${index}`}><strong>{item.name}</strong> · {item.address}</p>) : <p className="muted">Sin alojamientos detectados.</p>}
+        {draft.accommodations.length ? draft.accommodations.map((item, index) => (
+          <div className="import-edit-row" key={`${item.name}-${index}`}>
+            <div className="import-accommodation-grid">
+              <label>Alojamiento<input value={item.name} onChange={(event) => updateAccommodation(index, { name: event.target.value })} /></label>
+              <label>Dirección<input value={item.address} onChange={(event) => updateAccommodation(index, { address: event.target.value })} /></label>
+              <label>Desde<input type="date" value={item.startDate} onChange={(event) => updateAccommodation(index, { startDate: event.target.value })} /></label>
+              <label>Hasta<input type="date" value={item.endDate} onChange={(event) => updateAccommodation(index, { endDate: event.target.value })} /></label>
+            </div>
+            <button className="icon-button" aria-label={`Eliminar ${item.name}`} title="Eliminar" onClick={() => onChange({ ...draft, accommodations: draft.accommodations.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+          </div>
+        )) : <p className="muted">Sin alojamientos detectados.</p>}
       </details>
       <details>
         <summary>Vuelos detectados</summary>
-        {draft.flights.length ? draft.flights.map((item, index) => <p key={`${item.flightNumber}-${index}`}><strong>{item.flightNumber}</strong> · {item.scheduledDate} {item.scheduledDepartureTime}</p>) : <p className="muted">Sin vuelos detectados.</p>}
+        {draft.flights.length ? draft.flights.map((item, index) => (
+          <div className="import-edit-row" key={`${item.flightNumber}-${index}`}>
+            <div className="import-flight-grid">
+              <label>Vuelo<input value={item.flightNumber} onChange={(event) => updateFlight(index, { flightNumber: event.target.value.toUpperCase() })} /></label>
+              <label>Fecha<input type="date" value={item.scheduledDate} onChange={(event) => updateFlight(index, { scheduledDate: event.target.value })} /></label>
+              <label>Salida<input type="time" value={item.scheduledDepartureTime ?? ''} onChange={(event) => updateFlight(index, { scheduledDepartureTime: event.target.value })} /></label>
+              <label>Llegada<input type="time" value={item.scheduledArrivalTime ?? ''} onChange={(event) => updateFlight(index, { scheduledArrivalTime: event.target.value })} /></label>
+            </div>
+            <button className="icon-button" aria-label={`Eliminar vuelo ${item.flightNumber}`} title="Eliminar" onClick={() => onChange({ ...draft, flights: draft.flights.filter((_, current) => current !== index) })}><Trash2 size={17} /></button>
+          </div>
+        )) : <p className="muted">Sin vuelos detectados.</p>}
       </details>
     </div>
   );

@@ -149,6 +149,7 @@ textarea { min-height: 86px; resize: vertical; }
 .flight-card.tone-warning { --tone: #bd7b13; }
 .flight-card.tone-danger { --tone: #b52f37; }
 .flight-card-top, .flight-source-row, .section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.section-heading { flex-wrap: wrap; }
 .flight-card-top h3 { margin: 2px 0 0; font-size: 1.55rem; }
 .airline-name, .flight-date { margin: 0; color: var(--muted); }
 .airline-name { font-weight: 800; }
@@ -266,6 +267,11 @@ textarea { min-height: 86px; resize: vertical; }
 .privacy-note { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 12px; border: 1px solid color-mix(in srgb, var(--green) 55%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--green) 8%, var(--surface)); }
 .pdf-import-panel { border-top: 5px solid var(--brand); }
 .pdf-import-mode { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ai-itinerary-panel { border-top: 5px solid #7159a6; }
+.ai-itinerary-panel h3 { display: flex; align-items: center; gap: 7px; }
+.ai-prepare-button { justify-self: start; }
+.ai-prompt-result { display: grid; gap: 12px; }
+.ai-prompt-preview { min-height: 260px; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.78rem; line-height: 1.5; }
 .import-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .import-summary div { display: grid; gap: 3px; padding: 12px; border-right: 1px solid var(--line); text-align: center; }
 .import-summary div:last-child { border-right: 0; }
@@ -275,6 +281,14 @@ textarea { min-height: 86px; resize: vertical; }
 .import-details details { border: 1px solid var(--line); border-radius: 8px; padding: 11px 13px; }
 .import-details summary { cursor: pointer; font-weight: 850; }
 .import-details p { margin: 9px 0 0; overflow-wrap: anywhere; }
+.import-edit-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; align-items: end; padding: 11px 0; border-bottom: 1px solid var(--line); }
+.import-edit-row:last-child { border-bottom: 0; }
+.import-edit-row label { color: var(--muted); font-size: 0.72rem; }
+.import-edit-row input, .import-edit-row select { min-height: 40px; padding: 8px 9px; color: var(--ink); font-size: 0.84rem; font-weight: 700; }
+.import-activity-grid { display: grid; grid-template-columns: 128px 96px 150px minmax(190px, 1fr); gap: 8px; }
+.import-address-field { grid-column: 1 / -1; }
+.import-accommodation-grid { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(200px, 1.4fr) 128px 128px; gap: 8px; }
+.import-flight-grid { display: grid; grid-template-columns: repeat(4, minmax(110px, 1fr)); gap: 8px; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes marker-pulse { 50% { outline-color: rgba(255, 255, 255, 0.24); } }
@@ -314,4 +328,8 @@ textarea { min-height: 86px; resize: vertical; }
   .import-summary { grid-template-columns: 1fr; }
   .import-summary div { border-right: 0; border-bottom: 1px solid var(--line); }
   .import-summary div:last-child { border-bottom: 0; }
+  .ai-prepare-button { width: 100%; }
+  .import-edit-row { align-items: start; }
+  .import-activity-grid, .import-accommodation-grid, .import-flight-grid { grid-template-columns: 1fr; }
+  .import-address-field { grid-column: auto; }
 }

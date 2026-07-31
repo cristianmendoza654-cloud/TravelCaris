@@ -16,6 +16,7 @@ import {
   savePlace,
   saveSearchProvider,
   saveActivity,
+  validateBackup,
 } from './storage';
 import { parseTravelDocumentText } from './pdfImport';
 
@@ -62,6 +63,14 @@ describe('storage repository', () => {
     const snapshot = await getSnapshot();
     expect(snapshot.activities.some((activity) => activity.title === 'Lugar para exportar')).toBe(true);
     expect(backup.searchProviders.length).toBeGreaterThan(5);
+  });
+
+  it('rechaza copias incompletas o con enlaces peligrosos antes de escribir en IndexedDB', async () => {
+    expect(validateBackup({ trips: [], activities: [], flights: [], flightAlerts: [], settings: {} })).toBe(false);
+    expect(validateBackup({})).toBe(false);
+    const backup = await exportBackup();
+    backup.searchProviders[0].urlTemplate = 'javascript:alert(1)';
+    expect(validateBackup(backup)).toBe(false);
   });
 
   it('persiste proveedores, historial y lugares guardados por viaje', async () => {
