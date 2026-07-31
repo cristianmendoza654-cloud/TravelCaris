@@ -241,4 +241,42 @@ CANTIDAD: 2
     expect(snapshot.reminders[0].title).toBe('Reservar entradas');
     expect(snapshot.packingItems[0]).toMatchObject({ title: 'Cargador', person: 'Leo', quantity: 2 });
   });
+
+  it('conserva los detalles ampliados y terminales de una importación V4', async () => {
+    await restoreInitialData();
+    const draft = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V4
+[VIAJE]
+NOMBRE: Viaje V4
+DESTINO: Roma
+PAIS: Italia
+INICIO: 2027-09-03
+FIN: 2027-09-03
+[ACTIVIDAD]
+FECHA: 2027-09-03
+INICIO: 12:00
+TITULO: Museo V4
+CATEGORIA: Museo
+ESTADO: Confirmado
+HORARIO_APERTURA: 09:00 a 18:00
+PUNTO_ENCUENTRO: Puerta principal
+PRECIO_TOTAL: 40
+PRECIO_TIPO: Precio fijo
+MONEDA: EUR
+[FIN_ACTIVIDAD]
+[VUELO]
+NUMERO: IB1234
+FECHA: 2027-09-03
+ORIGEN_IATA: MAD
+DESTINO_IATA: FCO
+TERMINAL_SALIDA: T4
+TERMINAL_LLEGADA: T1
+ESTADO: Confirmado
+[FIN_VUELO]
+[FIN_TRAVELCARIS]`]);
+
+    await applyPdfImport(draft, 'replace');
+    const snapshot = await getSnapshot();
+    expect(snapshot.activities[0]).toMatchObject({ status: 'Confirmado', openingHoursNote: '09:00 a 18:00', meetingPoint: 'Puerta principal' });
+    expect(snapshot.flights[0]).toMatchObject({ departureTerminal: 'T4', arrivalTerminal: 'T1', status: 'Confirmado' });
+  });
 });

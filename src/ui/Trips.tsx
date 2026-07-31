@@ -161,6 +161,9 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
   const locatedPlaces = draft
     ? [...draft.activities, ...draft.accommodations].filter((item) => Number.isFinite(item.lat) && Number.isFinite(item.lng)).length
     : 0;
+  const detailedActivities = draft
+    ? draft.activities.filter((item) => Boolean(item.openingHoursNote || item.bookingDeadline || item.meetingPoint || item.sourceUrl || item.accessibility || item.rainPlan)).length
+    : 0;
 
   return (
     <section className="form-card pdf-import-panel">
@@ -220,6 +223,7 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
             <div><strong>{draft.reminders.length}</strong><span>Recordatorios</span></div>
             <div><strong>{draft.packingItems.length}</strong><span>Equipaje</span></div>
             <div><strong>{locatedPlaces}</strong><span>Ya ubicados</span></div>
+            <div><strong>{detailedActivities}</strong><span>Fichas ampliadas</span></div>
           </div>
           {draft.sourceFormat?.startsWith('travelcaris-ai-') && <div className="notice notice-neutral"><Check size={18} /><p><strong>Formato TravelCaris IA detectado.</strong> Los bloques estructurados se han leído con prioridad.</p></div>}
           {draft.warnings.length > 0 && <div className="notice notice-warning"><div><strong>Revisión necesaria</strong>{draft.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></div>}
@@ -309,6 +313,14 @@ function ImportDetails({ draft, onChange }: { draft: PdfImportDraft; onChange: (
               <label>Categoría<select value={item.category ?? 'Otros'} onChange={(event) => updateActivity(index, { category: event.target.value as PdfImportDraft['activities'][number]['category'] })}>{categories.map((category) => <option key={category}>{category}</option>)}</select></label>
               <label className="import-title-field">Actividad<input value={item.title} onChange={(event) => updateActivity(index, { title: event.target.value })} /></label>
               <label className="import-address-field">Dirección<input value={item.address ?? ''} onChange={(event) => updateActivity(index, { address: event.target.value })} /></label>
+              <div className="import-quality" aria-label={`Datos detectados para ${item.title}`}>
+                {Number.isFinite(item.lat) && Number.isFinite(item.lng) && <span>Ubicación exacta</span>}
+                {item.openingHoursNote && <span>Horario</span>}
+                {item.reservationStatus && item.reservationStatus !== 'No necesaria' && <span>Reserva</span>}
+                {(item.sourceUrl || item.officialLink) && <span>Fuente</span>}
+                {(item.accessibility || item.rainPlan) && <span>Información práctica</span>}
+                {item.planType === 'Alternativa' && <span>Alternativa</span>}
+              </div>
             </div>
             <button className="import-remove-button danger-button" aria-label={`Eliminar ${item.title}`} onClick={() => onChange({ ...draft, activities: draft.activities.filter((_, current) => current !== index) })}><Trash2 size={17} /><span>Quitar</span></button>
           </div>

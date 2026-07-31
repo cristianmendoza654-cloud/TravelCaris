@@ -226,9 +226,9 @@ test('prepara con IA un encargo compatible con la importación PDF', async ({ pa
   await expect(page.getByRole('heading', { name: /Crear itinerario con IA/i })).toBeVisible();
   await page.getByLabel('Destino', { exact: true }).fill('Roma');
   await page.getByLabel('Qué quieres hacer en este viaje').fill('Historia, parques y comida local con un ritmo tranquilo.');
-  await page.getByRole('button', { name: /Preparar instrucciones/i }).click();
+  await page.getByRole('button', { name: /Crear un viaje nuevo/i }).click();
 
-  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V3');
+  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V4');
   await expect(page.getByRole('link', { name: 'Abrir ChatGPT' })).toHaveAttribute('href', 'https://chatgpt.com/');
   await page.getByRole('button', { name: 'Ya tengo el PDF' }).click();
   await expect(page.getByRole('heading', { name: 'Rellenar desde un PDF' })).toBeVisible();
@@ -248,7 +248,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.8.1')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.9.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

@@ -1,7 +1,7 @@
 import { Copy, ExternalLink, FileUp, ShieldCheck, Sparkles, WandSparkles, X } from 'lucide-react';
 import { useState } from 'react';
 import { currencyCodes, type Trip } from '../domain/types';
-import { buildAiItineraryPrompt, type AiItineraryBrief } from '../services/aiItinerary';
+import { buildAiItineraryPrompt, buildAiPdfRegenerationPrompt, type AiItineraryBrief } from '../services/aiItinerary';
 
 interface AiItineraryPanelProps {
   trip: Trip;
@@ -40,7 +40,7 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
     setError('');
   };
 
-  const prepare = () => {
+  const prepare = (regeneratePdf = false) => {
     if (!brief.destination.trim() && !brief.notes.trim()) {
       setError('Indica al menos el destino o qué tipo de viaje quieres hacer.');
       return;
@@ -49,7 +49,7 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
       setError('La fecha final no puede ser anterior a la inicial.');
       return;
     }
-    setPrompt(buildAiItineraryPrompt(brief));
+    setPrompt(regeneratePdf ? buildAiPdfRegenerationPrompt(brief) : buildAiItineraryPrompt(brief));
   };
 
   const copyPrompt = async () => {
@@ -104,7 +104,10 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
       <label>Qué quieres hacer en este viaje<textarea value={brief.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Prioridades, planes imprescindibles, horarios, cosas que quieres evitar y cualquier petición especial" /></label>
       {error && <p className="error">{error}</p>}
       {!prompt ? (
-        <button className="primary ai-prepare-button" onClick={prepare}><WandSparkles size={18} /> Preparar instrucciones para ChatGPT</button>
+        <div className="button-row">
+          <button className="primary ai-prepare-button" onClick={() => prepare(false)}><WandSparkles size={18} /> Crear un viaje nuevo</button>
+          <button className="secondary" onClick={() => prepare(true)}><FileUp size={18} /> Regenerar mi PDF actual</button>
+        </div>
       ) : (
         <div className="ai-prompt-result">
           <label>Encargo preparado<textarea className="ai-prompt-preview" readOnly value={prompt} rows={12} /></label>

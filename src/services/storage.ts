@@ -603,8 +603,8 @@ export async function createFlight(input: Partial<Flight> & Pick<Flight, 'flight
     scheduledArrivalTime: input.scheduledArrivalTime ?? '',
     estimatedArrivalTime: '',
     actualArrivalTime: '',
-    departureTerminal: '',
-    arrivalTerminal: '',
+    departureTerminal: input.departureTerminal ?? '',
+    arrivalTerminal: input.arrivalTerminal ?? '',
     gate: '',
     checkInCounter: '',
     baggageBelt: '',
@@ -825,7 +825,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.8.1',
+    version: '3.9.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

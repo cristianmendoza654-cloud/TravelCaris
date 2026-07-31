@@ -255,6 +255,100 @@ PREPARADO: Si
     expect(result.packingItems[0].done).toBe(true);
   });
 
+  it('importa fichas completas, alojamiento y terminales del formato V4', () => {
+    const result = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V4
+[VIAJE]
+NOMBRE: Roma completa
+DESTINO: Roma
+PAIS: Italia
+INICIO: 2027-09-03
+FIN: 2027-09-05
+[ACTIVIDAD]
+FECHA: 2027-09-03
+INICIO: 10:00
+FIN: 12:00
+TITULO: Galería de ejemplo
+CATEGORIA: Museo
+PLAN: Alternativa
+ESTADO: Confirmado
+PRIORIDAD: Alta
+DIRECCION: Via di Esempio 1, Roma
+TELEFONO: +39 000 000 000
+HORARIO_APERTURA: Viernes de 09:00 a 19:00
+HORARIO_ESPECIAL: Último acceso a las 18:00
+RESERVA: Necesaria
+PLAZO_RESERVA: Reservar antes del 2027-08-20
+CANCELACION: Reembolso hasta 24 horas antes
+PUNTO_ENCUENTRO: Entrada norte
+ENLACE_OFICIAL: https://example.com/oficial
+ENLACE_RESERVA: https://example.com/reserva
+FUENTE_NOMBRE: Web oficial de ejemplo
+FUENTE_URL: https://example.com/visita
+VERIFICACION: Verificado
+FECHA_VERIFICACION: 2027-08-10
+NOTA_VERIFICACION: Horario y precio comprobados
+PRECIO_TIPO: Precio fijo
+PRECIO_ADULTO: 20
+PRECIO_NINO: 10
+PRECIO_BEBE: 0
+PRECIO_FAMILIA: 50
+PRECIO_TOTAL: 50
+MONEDA: EUR
+PRECIO_UNIDAD: familia
+NOTA_PRECIO: Entrada familiar
+ENTORNO: Interior
+PLAN_LLUVIA: Se mantiene por ser interior
+ACCESIBILIDAD: Acceso sin escalones
+CARRITO: Si
+FAMILIAR: Si
+EDAD_MINIMA: Sin restricción
+TOUR_PROVEEDOR: Guías de ejemplo
+TOUR_IDIOMA: Español
+[FIN_ACTIVIDAD]
+[ALOJAMIENTO]
+NOMBRE: Hotel de ejemplo
+DIRECCION: Via Roma 2
+INICIO: 2027-09-03
+FIN: 2027-09-05
+CHECK_IN: 15:00
+CHECK_OUT: 11:00
+INSTRUCCIONES_ACCESO: Recepción abierta 24 horas
+EQUIPAJE: Consigna gratuita
+ACTIVO: Si
+[FIN_ALOJAMIENTO]
+[VUELO]
+COMPANIA: Iberia
+NUMERO: IB1234
+FECHA: 2027-09-03
+ORIGEN: Madrid
+ORIGEN_IATA: MAD
+DESTINO: Roma Fiumicino
+DESTINO_IATA: FCO
+SALIDA: 08:00
+LLEGADA: 10:30
+TERMINAL_SALIDA: T4
+TERMINAL_LLEGADA: T1
+ESTADO: Confirmado
+[FIN_VUELO]
+[FIN_TRAVELCARIS]`]);
+
+    expect(result.sourceFormat).toBe('travelcaris-ai-v4');
+    expect(result.activities[0]).toMatchObject({
+      planType: 'Alternativa',
+      status: 'Confirmado',
+      priority: 'Alta',
+      openingHoursNote: 'Viernes de 09:00 a 19:00',
+      bookingDeadline: 'Reservar antes del 2027-08-20',
+      meetingPoint: 'Entrada norte',
+      strollerFriendly: true,
+      tourLanguage: 'Español',
+      sourceUrl: 'https://example.com/visita',
+      priceDetails: { kind: 'Precio fijo', adult: 20, child: 10, family: 50, totalEstimate: 50, currency: 'EUR', unit: 'familia' },
+    });
+    expect(result.accommodations[0]).toMatchObject({ entryInstructions: 'Recepción abierta 24 horas', luggageNotes: 'Consigna gratuita', active: true });
+    expect(result.flights[0]).toMatchObject({ departureTerminal: 'T4', arrivalTerminal: 'T1', status: 'Confirmado' });
+  });
+
   it('bloquea una importación con elementos fuera del viaje', () => {
     const result = parseTravelDocumentText(sample, 'viaje-ficticio.pdf');
     result.activities[0].day = '2030-01-01';

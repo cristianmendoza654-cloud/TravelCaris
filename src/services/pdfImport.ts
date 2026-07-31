@@ -1,6 +1,6 @@
 import type { Accommodation, Activity, Flight, PackingItem, Reminder, Trip } from '../domain/types';
-import { categories, currencyCodes } from '../domain/types';
-import { legacyTravelCarisAiFormat, originalTravelCarisAiFormat, travelCarisAiFormat } from './aiItinerary';
+import { categories, currencyCodes, flightStatuses, statuses } from '../domain/types';
+import { legacyTravelCarisAiFormat, originalTravelCarisAiFormat, previousTravelCarisAiFormat, travelCarisAiFormat } from './aiItinerary';
 
 export interface PdfImportDraft {
   fileName: string;
@@ -11,7 +11,7 @@ export interface PdfImportDraft {
   reminders: Array<Omit<Reminder, 'id' | 'tripId' | 'notifiedAt'>>;
   packingItems: Array<Omit<PackingItem, 'id' | 'tripId' | 'order'>>;
   warnings: string[];
-  sourceFormat?: 'travelcaris-ai-v3' | 'travelcaris-ai-v2' | 'travelcaris-ai-v1' | 'general';
+  sourceFormat?: 'travelcaris-ai-v4' | 'travelcaris-ai-v3' | 'travelcaris-ai-v2' | 'travelcaris-ai-v1' | 'general';
 }
 
 const months: Record<string, number> = {
@@ -265,13 +265,15 @@ interface GeographicPlace {
 }
 
 function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImportDraft | null {
-  const formats = [travelCarisAiFormat, legacyTravelCarisAiFormat, originalTravelCarisAiFormat];
+  const formats = [travelCarisAiFormat, previousTravelCarisAiFormat, legacyTravelCarisAiFormat, originalTravelCarisAiFormat];
   const markerIndex = lines.findIndex((line) => formats.some((format) => format === fold(line).toUpperCase()));
   if (markerIndex < 0) return null;
   const marker = fold(lines[markerIndex]).toUpperCase();
   const sourceFormat: PdfImportDraft['sourceFormat'] = marker === travelCarisAiFormat
-    ? 'travelcaris-ai-v3'
-    : marker === legacyTravelCarisAiFormat ? 'travelcaris-ai-v2' : 'travelcaris-ai-v1';
+    ? 'travelcaris-ai-v4'
+    : marker === previousTravelCarisAiFormat
+      ? 'travelcaris-ai-v3'
+      : marker === legacyTravelCarisAiFormat ? 'travelcaris-ai-v2' : 'travelcaris-ai-v1';
 
   const sections = structuredSections(lines.slice(markerIndex + 1));
   const tripSection = sections.find((section) => section.name === 'VIAJE');
@@ -377,6 +379,67 @@ function structuredSections(lines: string[]) {
 }
 
 function structuredActivity(section: StructuredSection, fallbackDate: string): PdfImportDraft['activities'][number] | null {
+  const base = structuredActivityLegacy(section, fallbackDate);
+  if (!base) return null;
+  const currency = supportedCurrency(field(section, 'MONEDA'));
+  const total = positiveNumber(field(section, 'PRECIO_TOTAL'));
+  const adult = positiveNumber(field(section, 'PRECIO_ADULTO'));
+  const child = positiveNumber(field(section, 'PRECIO_NINO'));
+  const baby = positiveNumber(field(section, 'PRECIO_BEBE'));
+  const family = positiveNumber(field(section, 'PRECIO_FAMILIA'));
+  const status = activityStatus(field(section, 'ESTADO'));
+  const officialLink = safeHttpUrl(field(section, 'ENLACE_OFICIAL'));
+  const sourceUrl = safeHttpUrl(field(section, 'FUENTE_URL')) || officialLink;
+  const planType = fold(field(section, 'PLAN')).toUpperCase() === 'ALTERNATIVA' || status === 'Alternativa' ? 'Alternativa' : 'Principal';
+  return {
+    ...base,
+    phone: field(section, 'TELEFONO'),
+    status,
+    visited: status === 'Realizado',
+    planType,
+    priority: activityPriority(field(section, 'PRIORIDAD')),
+    officialLink,
+    sourceName: field(section, 'FUENTE_NOMBRE') || base.sourceName,
+    sourceUrl,
+    verificationNote: field(section, 'NOTA_VERIFICACION') || base.verificationNote,
+    adultPrice: adult,
+    childPrice: child,
+    estimatedTotalPrice: total,
+    currency,
+    priceDetails: {
+      kind: priceKind(field(section, 'PRECIO_TIPO'), total || adult || child || family),
+      adult,
+      child,
+      baby,
+      family,
+      totalEstimate: total,
+      currency,
+      unit: priceUnit(field(section, 'PRECIO_UNIDAD'), total > 0),
+      note: field(section, 'NOTA_PRECIO') || (total ? 'Estimación incluida en el PDF.' : ''),
+    },
+    openingHoursNote: field(section, 'HORARIO_APERTURA'),
+    specialHours: field(section, 'HORARIO_ESPECIAL'),
+    bookingDeadline: field(section, 'PLAZO_RESERVA'),
+    cancellationPolicy: field(section, 'CANCELACION'),
+    meetingPoint: field(section, 'PUNTO_ENCUENTRO'),
+    minimumAge: field(section, 'EDAD_MINIMA'),
+    ...(field(section, 'CARRITO') ? { strollerFriendly: yes(field(section, 'CARRITO')) } : {}),
+    ...(field(section, 'FAMILIAR') ? { familyFriendly: yes(field(section, 'FAMILIAR')) } : {}),
+    tourProvider: field(section, 'TOUR_PROVEEDOR'),
+    tourLanguage: field(section, 'TOUR_IDIOMA'),
+    tourType: field(section, 'TOUR_TIPO'),
+    tipGuidance: field(section, 'PROPINA'),
+    restaurantCuisine: field(section, 'COCINA'),
+    mealType: field(section, 'TIPO_COMIDA'),
+    dietaryOptions: field(section, 'OPCIONES_ALIMENTARIAS'),
+    bookingPlatform: field(section, 'PLATAFORMA_RESERVA'),
+    leisureType: field(section, 'TIPO_OCIO'),
+    showTime: field(section, 'SESION'),
+    venue: field(section, 'RECINTO'),
+  };
+}
+
+function structuredActivityLegacy(section: StructuredSection, fallbackDate: string): PdfImportDraft['activities'][number] | null {
   const title = field(section, 'TITULO');
   if (!title) return null;
   const categoryValue = field(section, 'CATEGORIA');
@@ -436,6 +499,22 @@ function structuredAccommodation(
   fallbackEnd: string,
   active: boolean,
 ): PdfImportDraft['accommodations'][number] | null {
+  const base = structuredAccommodationLegacy(section, fallbackStart, fallbackEnd, active);
+  if (!base) return null;
+  return {
+    ...base,
+    entryInstructions: field(section, 'INSTRUCCIONES_ACCESO'),
+    luggageNotes: field(section, 'EQUIPAJE'),
+    active: field(section, 'ACTIVO') ? yes(field(section, 'ACTIVO')) : active,
+  };
+}
+
+function structuredAccommodationLegacy(
+  section: StructuredSection,
+  fallbackStart: string,
+  fallbackEnd: string,
+  active: boolean,
+): PdfImportDraft['accommodations'][number] | null {
   const name = field(section, 'NOMBRE');
   if (!name) return null;
   return {
@@ -457,6 +536,17 @@ function structuredAccommodation(
 }
 
 function structuredFlight(section: StructuredSection, fallbackDate: string): PdfImportDraft['flights'][number] | null {
+  const base = structuredFlightLegacy(section, fallbackDate);
+  if (!base) return null;
+  return {
+    ...base,
+    departureTerminal: field(section, 'TERMINAL_SALIDA'),
+    arrivalTerminal: field(section, 'TERMINAL_LLEGADA'),
+    status: flightStatus(field(section, 'ESTADO')),
+  };
+}
+
+function structuredFlightLegacy(section: StructuredSection, fallbackDate: string): PdfImportDraft['flights'][number] | null {
   const flightNumber = field(section, 'NUMERO').replace(/\s/g, '').toUpperCase();
   if (!flightNumber) return null;
   const departureIata = field(section, 'ORIGEN_IATA').toUpperCase();
@@ -982,6 +1072,41 @@ function reservationStatus(value: string): Activity['reservationStatus'] {
   if (normalized === 'PENDIENTE') return 'Pendiente';
   if (normalized === 'RESERVADA') return 'Reservada';
   return 'No necesaria';
+}
+
+function activityStatus(value: string): Activity['status'] {
+  const normalized = fold(value).toUpperCase();
+  return statuses.find((status) => fold(status).toUpperCase() === normalized) ?? 'Pendiente';
+}
+
+function activityPriority(value: string): Activity['priority'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'BAJA') return 'Baja';
+  if (normalized === 'ALTA') return 'Alta';
+  if (normalized === 'PREMIUM') return 'Premium';
+  return 'Media';
+}
+
+function priceKind(value: string, hasPrice: number): Activity['priceDetails']['kind'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'GRATIS') return 'Gratis';
+  if (normalized === 'PRECIO FIJO') return 'Precio fijo';
+  if (normalized === 'DESDE') return 'Desde';
+  if (normalized === 'DONATIVO') return 'Donativo';
+  if (normalized === 'APROXIMADO') return 'Aproximado';
+  return hasPrice ? 'Aproximado' : 'Desconocido';
+}
+
+function priceUnit(value: string, totalOnly = false): Activity['priceDetails']['unit'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'FAMILIA') return 'familia';
+  if (normalized === 'ACTIVIDAD') return 'actividad';
+  return totalOnly ? 'actividad' : 'persona';
+}
+
+function flightStatus(value: string): Flight['status'] {
+  const normalized = fold(value).toUpperCase();
+  return flightStatuses.find((status) => fold(status).toUpperCase() === normalized) ?? 'Programado';
 }
 
 function verificationStatus(value: string): Activity['verificationStatus'] {
