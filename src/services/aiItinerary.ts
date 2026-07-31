@@ -58,7 +58,9 @@ Cuando tengas las respuestas necesarias, crea un itinerario realista por días. 
 FASE 3: DOCUMENTO FINAL
 Entrega un archivo PDF descargable, en español, con diseño claro y texto seleccionable. Incluye primero una versión cómoda para leer: resumen del viaje, itinerario diario, alojamientos, vuelos, presupuesto orientativo, reservas pendientes y fuentes que conviene verificar.
 
-Al final del PDF añade un anexo de texto en una sola columna. Debe comenzar exactamente por ${travelCarisAiFormat}. No uses tablas, viñetas, columnas ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y códigos de moneda ISO de tres letras. Conserva como completados los preparativos indicados por el viajero y no los conviertas en avisos pendientes. Incluye recordatorios solo cuando tengan una fecha útil y elementos de equipaje concretos, sin inventar necesidades. Usa una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
+ANEXO OBLIGATORIO PARA LA IMPORTACIÓN: al final del PDF añade el anexo de texto completo que se define abajo. Una portada, una tabla, tarjetas visuales o una mención a ${travelCarisAiFormat} no sustituyen este anexo. Si falta el marcador en una línea independiente, el bloque [VIAJE], todos los bloques de datos aplicables o [FIN_TRAVELCARIS], el PDF no es compatible y no debes entregarlo todavía.
+
+El anexo debe ir en una sola columna y comenzar exactamente por ${travelCarisAiFormat} en una línea independiente, seguido inmediatamente por [VIAJE]. No uses tablas, viñetas, columnas, cabeceras, pies de página ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y códigos de moneda ISO de tres letras. Conserva como completados los preparativos indicados por el viajero y no los conviertas en avisos pendientes. Incluye recordatorios solo cuando tengan una fecha útil y elementos de equipaje concretos, sin inventar necesidades. Usa una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
 
 FORMATO EXACTO DEL ANEXO
 ${travelCarisAiFormat}
@@ -145,7 +147,7 @@ PREPARADO: Si o No
 
 [FIN_TRAVELCARIS]
 
-Antes de entregar el PDF, comprueba que cada lugar identificable tenga dirección completa y coordenadas verificadas, que cada actividad tenga su estado y fecha de verificación, que lo ya realizado figure como completado, que todas las actividades y recordatorios estén dentro de un intervalo razonable para el viaje, que no existan horas imposibles ni bloques duplicados y que el anexo conserve exactamente estas etiquetas.`;
+COMPROBACIÓN FINAL OBLIGATORIA: antes de entregar el PDF, extrae o revisa su texto final y confirma que contiene, como líneas independientes, ${travelCarisAiFormat}, [VIAJE], al menos un bloque [ACTIVIDAD] cuando exista itinerario, cada [ALOJAMIENTO] y [VUELO] aplicable, y [FIN_TRAVELCARIS]. Comprueba además que cada lugar identificable tenga dirección completa y coordenadas verificadas, que cada actividad tenga su estado y fecha de verificación, que lo ya realizado figure como completado, que todas las actividades y recordatorios estén dentro de un intervalo razonable para el viaje y que no existan horas imposibles ni bloques duplicados. Si la comprobación falla, corrige y vuelve a generar el PDF antes de proporcionarlo.`;
 }
 
 function dateRange(startDate: string, endDate: string) {

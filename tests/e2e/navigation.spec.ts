@@ -133,7 +133,11 @@ test('importa un PDF real en WebKit móvil cuando se proporciona localmente', as
   await page.goto('/mas');
   await page.getByRole('button', { name: 'Importar PDF' }).click();
   await page.locator('input[type="file"][accept*="pdf"]').setInputFiles(pdfPath!);
-  await expect(page.getByLabel('Resumen detectado')).toBeVisible({ timeout: 30_000 });
+  const summary = page.getByLabel('Resumen detectado');
+  await expect(summary).toBeVisible({ timeout: 30_000 });
+  const counts = await summary.locator('strong').allTextContents();
+  expect(Number(counts[1])).toBeGreaterThan(0);
+  expect(Number(counts[2])).toBeGreaterThan(0);
 });
 
 test('muestra la ubicación actual solo después de conceder permiso', async ({ page, context }) => {
@@ -205,7 +209,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.7.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.7.1')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

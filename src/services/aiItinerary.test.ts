@@ -35,6 +35,9 @@ describe('encargo de itinerario con IA', () => {
     expect(prompt).toContain('TRAVELCARIS-AI-PDF-V3');
     expect(prompt).toContain('FECHA_VERIFICACION');
     expect(prompt).toContain('Hotel reservado');
+    expect(prompt).toContain('ANEXO OBLIGATORIO PARA LA IMPORTACIÓN');
+    expect(prompt).toContain('Una portada, una tabla, tarjetas visuales');
+    expect(prompt).toContain('COMPROBACIÓN FINAL OBLIGATORIA');
   });
 
   it('prohíbe solicitar o incluir secretos de viaje', () => {

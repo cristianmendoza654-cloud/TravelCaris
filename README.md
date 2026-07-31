@@ -25,7 +25,7 @@ El build se genera en `dist`.
 ## Funciones principales
 
 - Gestión de varios viajes, con perfil, portada propia o automática, viajeros, presupuesto, viaje activo y estados Próximo, En curso, Finalizado y Archivado.
-- Importación local de PDF con vista previa editable, ubicación automática opcional y controles para corregir o eliminar perfil, actividades, alojamientos, vuelos, recordatorios y equipaje antes de guardar.
+- Importación local de PDF con vista previa editable, ubicación automática opcional y controles para corregir o eliminar perfil, actividades, alojamientos, vuelos, recordatorios y equipaje antes de guardar. Si un PDF V3 omite por error el anexo, el lector también reconoce registros geográficos `ALOJ-01` y tablas de vuelos habituales.
 - Creador de encargos para ChatGPT sin API: entrevista guiada, instrucciones de planificación y anexo `TRAVELCARIS-AI-PDF-V3` con coordenadas, verificación y elementos ya completados.
 - Inicio con preparación adaptativa, días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
 - Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje familiar por persona y recordatorios.

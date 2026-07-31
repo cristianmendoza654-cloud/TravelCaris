@@ -523,6 +523,33 @@ function detectAccommodations(lines: string[], startDate: string, endDate: strin
   const now = new Date().toISOString();
 
   for (let index = 0; index < lines.length; index += 1) {
+    const geographicRecord = lines[index].match(/^ALOJ-(\d+)\s+(.+)$/i);
+    if (geographicRecord) {
+      const details = lines.slice(index + 1, index + 12);
+      const name = geographicRecord[2]
+        .replace(/\s+VERIFICADO(?:_[\p{L}_]+)?(?:\s*[+-]\s*[\p{L}_]+)*$/iu, '')
+        .trim();
+      const address = prefixedValue(details, 'DIRECCION');
+      const schedule = prefixedValue(details, 'HORARIO / PRECIO');
+      const note = prefixedValue(details, 'NOTA');
+      const coordinates = details.join(' ').match(/LATITUD:\s*(-?\d+(?:[.,]\d+)?)\s+LONGITUD:\s*(-?\d+(?:[.,]\d+)?)/i);
+      const stay = fold(schedule).match(/ENTRADA\s+(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}:\d{2}))?.*SALIDA\s+(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}:\d{2}))?/i);
+      const imported = accommodationDraft(
+        name || `Alojamiento ${geographicRecord[1]}`,
+        address,
+        stay ? dateFromDayMonth(Number(stay[1]), Number(stay[2]), startDate, endDate) : startDate,
+        stay ? dateFromDayMonth(Number(stay[4]), Number(stay[5]), startDate, endDate) : endDate,
+        results.length === 0,
+        now,
+      );
+      imported.checkIn = stay?.[3] ?? '';
+      imported.checkOut = stay?.[6] ?? '';
+      imported.lat = coordinates ? coordinate(coordinates[1], -90, 90) : undefined;
+      imported.lng = coordinates ? coordinate(coordinates[2], -180, 180) : undefined;
+      imported.notes = note || imported.notes;
+      if (address || name) results.push(imported);
+      continue;
+    }
     const columns = lines[index].split(/\s*\|\|\s*/).filter(Boolean);
     if (columns.length > 1 && columns.every((column) => /^(?:ALOJAMIENTO|HOTEL)(?:\s+\d+)?$/i.test(fold(column)))) {
       const detailRows = lines.slice(index + 1, index + 3).map((line) => line.split(/\s*\|\|\s*/));
@@ -589,6 +616,30 @@ function detectFlights(text: string, startDate: string): PdfImportDraft['flights
       scheduledArrivalTime: match[9],
       status: 'Programado',
       notes: 'Importado localmente desde PDF. Verifica los datos en la fuente oficial.',
+      officialTrackingUrl: inferAirlineUrl(flightNumber),
+      departureAirportUrl: airportOfficialUrls[departureIata] ?? '',
+      arrivalAirportUrl: airportOfficialUrls[arrivalIata] ?? '',
+    });
+  }
+
+  const tablePattern = /\b(?:IDA|VUELTA)\s+([A-Z0-9]{2,3}\s?\d{2,4})\s+(\d{1,2})\/(\d{1,2})\/(\d{4})\s+([A-Z]{3})\s+(\d{1,2}:\d{2})\s+([A-Z]{3})(?:\s+(?!\d{1,2}:\d{2})[\p{L}0-9-]+){0,3}\s+(\d{1,2}:\d{2})/giu;
+  for (const match of compact.matchAll(tablePattern)) {
+    const flightNumber = match[1].replace(/\s/g, '').toUpperCase();
+    const departureIata = match[5].toUpperCase();
+    const arrivalIata = match[7].toUpperCase();
+    results.push({
+      airline: inferAirlineName(flightNumber),
+      airlineIata: flightNumber.match(/^[A-Z0-9]{2,3}/)?.[0] ?? '',
+      flightNumber,
+      scheduledDate: isoDate(Number(match[4]), Number(match[3]), Number(match[2])),
+      departureAirport: departureIata,
+      departureIata,
+      arrivalAirport: arrivalIata,
+      arrivalIata,
+      scheduledDepartureTime: match[6].padStart(5, '0'),
+      scheduledArrivalTime: match[8].padStart(5, '0'),
+      status: 'Programado',
+      notes: 'Importado desde una tabla del PDF. Verifica terminales y horarios en la fuente oficial.',
       officialTrackingUrl: inferAirlineUrl(flightNumber),
       departureAirportUrl: airportOfficialUrls[departureIata] ?? '',
       arrivalAirportUrl: airportOfficialUrls[arrivalIata] ?? '',
@@ -764,6 +815,30 @@ function inferAirlineUrl(flightNumber: string) {
   if (normalized.startsWith('FR')) return 'https://www.ryanair.com/es/es/lp/travel-updates';
   if (normalized.startsWith('BA')) return 'https://www.britishairways.com/travel/flightstatus/public/es_es';
   return '';
+}
+
+function inferAirlineName(flightNumber: string) {
+  const normalized = flightNumber.toUpperCase();
+  if (normalized.startsWith('VY')) return 'Vueling';
+  if (normalized.startsWith('U2') || normalized.startsWith('EZY')) return 'easyJet';
+  if (normalized.startsWith('IB')) return 'Iberia';
+  if (normalized.startsWith('FR')) return 'Ryanair';
+  if (normalized.startsWith('BA')) return 'British Airways';
+  return '';
+}
+
+function prefixedValue(lines: string[], prefix: string) {
+  const normalizedPrefix = fold(prefix).toUpperCase();
+  const line = lines.find((candidate) => fold(candidate).toUpperCase().startsWith(`${normalizedPrefix}:`));
+  return line ? cleanLine(line.slice(line.indexOf(':') + 1)) : '';
+}
+
+function dateFromDayMonth(day: number, month: number, startDate: string, endDate: string) {
+  const start = parseIso(startDate);
+  const end = parseIso(endDate);
+  const year = month < start.month && end.year > start.year ? end.year : start.year;
+  const candidate = isoDate(year, month, day);
+  return validIsoDate(candidate) ? candidate : startDate;
 }
 
 function field(section: StructuredSection, key: string) {

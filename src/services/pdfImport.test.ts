@@ -38,6 +38,43 @@ describe('importación local de itinerarios PDF', () => {
     expect(result.flights[0].departureAirportUrl).toMatch(/^https:\/\//);
   });
 
+  it('recupera alojamientos geográficos y una tabla de vuelos cuando falta el anexo V3', () => {
+    const result = parseTravelDocumentText([`LONDRES EN FAMILIA
+1-5 DE AGOSTO DE 2026
+FORMATO TRAVELCARIS-AI-PDF-V3
+ALOJ-01 Apartamento Centro VERIFICADO_USUARIO + GEOCODIFICADO
+TIPO / ACCESO: PUERTA DEL EDIFICIO · ALOJAMIENTO
+DIRECCION: 10 Example Street, London, Reino Unido
+LATITUD: 51.520359    LONGITUD: -0.117218
+HORARIO / PRECIO: Entrada 01/08 15:00 · salida 04/08 11:00
+NOTA: Alojamiento confirmado sin datos privados.
+ALOJ-02 Apartamento Estación VERIFICADO_USUARIO + GEOCODIFICADO
+TIPO / ACCESO: PUERTA DEL EDIFICIO · ALOJAMIENTO
+DIRECCION: 20 Sample Road, London, Reino Unido
+LATITUD: 51.491180    LONGITUD: -0.143150
+HORARIO / PRECIO: Entrada 04/08 · salida 05/08
+NOTA: Segundo alojamiento confirmado.
+7. Vuelos y traslados
+TRAMO VUELO FECHA SALIDA LLEGADA ESTADO
+IDA VY1234 01/08/2026 ALC 06:05 LGW South 07:50 CONFIRMADO
+VUELTA U22315 05/08/2026 LTN 20:00 ALC 23:40 CONFIRMADO`], 'v3-sin-anexo.pdf');
+
+    expect(result.sourceFormat).toBe('general');
+    expect(result.accommodations).toHaveLength(2);
+    expect(result.accommodations[0]).toMatchObject({
+      name: 'Apartamento Centro',
+      startDate: '2026-08-01',
+      endDate: '2026-08-04',
+      checkIn: '15:00',
+      checkOut: '11:00',
+      lat: 51.520359,
+      lng: -0.117218,
+    });
+    expect(result.flights).toHaveLength(2);
+    expect(result.flights[0]).toMatchObject({ flightNumber: 'VY1234', scheduledDate: '2026-08-01', departureIata: 'ALC', arrivalIata: 'LGW', scheduledDepartureTime: '06:05', scheduledArrivalTime: '07:50' });
+    expect(result.flights[1]).toMatchObject({ flightNumber: 'U22315', scheduledDate: '2026-08-05', departureIata: 'LTN', arrivalIata: 'ALC' });
+  });
+
   it('importa el perfil, recordatorios y equipaje del formato V2', () => {
     const result = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V2
 [VIAJE]
