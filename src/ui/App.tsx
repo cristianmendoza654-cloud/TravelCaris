@@ -95,8 +95,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    refresh();
-  }, [refresh]);
+    void getSnapshot().then(setSnapshot);
+  }, []);
 
   if (!snapshot) return <Splash />;
 
@@ -162,6 +162,7 @@ function BottomNav() {
 }
 
 function TodayView({ snapshot, refresh, notify }: ViewProps) {
+  const [currentTime] = useState(() => Date.now());
   const availableDays = tripDateRange(snapshot.activeTrip.startDate, snapshot.activeTrip.endDate);
   const [selectedDay, setSelectedDay] = useState<TripDay>(
     availableDays.includes(today) ? today : snapshot.activeTrip.startDate,
@@ -177,7 +178,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
   const nextFlight = snapshot.flights.find((flight) => flight.scheduledDate >= selectedDay);
   const daysRemaining = Math.max(
     0,
-    Math.ceil((new Date(`${snapshot.activeTrip.startDate}T12:00:00`).getTime() - Date.now()) / 86_400_000),
+    Math.ceil((new Date(`${snapshot.activeTrip.startDate}T12:00:00`).getTime() - currentTime) / 86_400_000),
   );
 
   return (

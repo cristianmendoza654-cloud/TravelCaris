@@ -102,6 +102,18 @@ El endpoint incluido en `api/flights/status.ts` sigue el formato de Vercel Funct
 
 Vercel:
 
+1. Importa el repositorio desde GitHub.
+2. Usa `Vite` como Framework Preset.
+3. Usa `./` como Root Directory.
+4. Usa `npm install` como Install Command.
+5. Usa `npm run build` como Build Command.
+6. Usa `dist` como Output Directory.
+7. Despliega sin variables para mantener el modo manual gratuito.
+
+`vercel.json` conserva las funciones de `/api` y envía el resto de rutas a `index.html`, por lo que las pantallas de React también funcionan al recargar una URL interna.
+
+Para habilitar opcionalmente un proveedor automático:
+
 1. Abre Project Settings > Environment Variables.
 2. Añade `FLIGHT_STATUS_PROVIDER` y la clave del proveedor elegido.
 3. Aplica las variables a Production y Preview según necesites.

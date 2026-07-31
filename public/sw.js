@@ -1,5 +1,5 @@
 /* global self, caches, fetch, URL, location */
-const CACHE_NAME = 'travelcaris-v2';
+const CACHE_NAME = 'travelcaris-v3';
 const APP_SHELL = ['/', '/index.html', '/offline.html', '/manifest.webmanifest'];
 
 self.addEventListener('install', (event) => {

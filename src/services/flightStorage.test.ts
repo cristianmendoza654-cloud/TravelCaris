@@ -54,5 +54,10 @@ describe('persistencia de estados de vuelo', () => {
     expect(snapshot.flights.map((flight) => flight.flightNumber)).toEqual(['VY8475', 'U22315']);
     await saveManualFlightChanges(snapshot.flights[0].id, { status: 'Confirmado' });
     expect((await db.flights.get(snapshot.flights[0].id))?.status).toBe('Confirmado');
+    for (const flight of snapshot.flights) {
+      expect(flight.officialTrackingUrl).toMatch(/^https:\/\//);
+      expect(flight.departureAirportUrl).toMatch(/^https:\/\//);
+      expect(flight.arrivalAirportUrl).toMatch(/^https:\/\//);
+    }
   });
 });
