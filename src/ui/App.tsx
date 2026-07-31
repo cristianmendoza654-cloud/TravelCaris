@@ -16,6 +16,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import {
+  BedDouble,
   CalendarDays,
   Check,
   Clock3,
@@ -26,23 +27,38 @@ import {
   ExternalLink,
   FileText,
   Home,
+  Hospital,
+  Landmark,
+  LocateFixed,
   Map as MapIcon,
+  MapPin,
+  MapPinned,
   MoreHorizontal,
+  Navigation,
   Plane,
   Plus,
+  ShoppingBag,
   Share2,
+  Ticket,
   Trash2,
+  Trees,
   Upload,
+  Utensils,
+  X,
+  type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { divIcon } from 'leaflet';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type React from 'react';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { NavLink, Route, Routes, useNavigate } from 'react-router-dom';
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet';
+import { Circle, MapContainer, Marker, Popup, TileLayer, useMap, useMapEvents } from 'react-leaflet';
 import { v4 as uuid } from 'uuid';
 import type {
   Accommodation,
   Activity,
   BackupData,
+  Category,
   Expense,
   TripDay,
 } from '../domain/types';
@@ -52,6 +68,7 @@ import { expenseTotals } from '../services/calculations';
 import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
 import { findItineraryGaps } from '../services/planning';
 import { appleMapsSearch, googleMapsSearch, shareText } from '../services/links';
+import { mapMarkerLegend, mapMarkerStyle, type MapMarkerKind } from '../services/map';
 import {
   createActivity,
   deleteActivity,
@@ -83,6 +100,18 @@ import { ExploreView } from './Explore';
 
 const today = new Date().toISOString().slice(0, 10);
 const worldCenter: [number, number] = [20, 0];
+
+const markerIconComponents: Record<MapMarkerKind, LucideIcon> = {
+  accommodation: BedDouble,
+  food: Utensils,
+  culture: Landmark,
+  leisure: Ticket,
+  nature: Trees,
+  transport: Plane,
+  shopping: ShoppingBag,
+  emergency: Hospital,
+  other: MapPin,
+};
 
 export function App() {
   const [snapshot, setSnapshot] = useState<AppSnapshot | null>(null);
@@ -338,10 +367,37 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
   );
 }
 
+interface MapPlace {
+  id: string;
+  entity: 'activity' | 'accommodation';
+  title: string;
+  address: string;
+  notes: string;
+  category: Category;
+  lat?: number;
+  lng?: number;
+  startDate: string;
+  endDate: string;
+  time: string;
+}
+
+interface CurrentLocation {
+  lat: number;
+  lng: number;
+  accuracy: number;
+}
+
 function MapView({ snapshot, refresh, notify }: ViewProps) {
   const [day, setDay] = useState<'all' | TripDay>('all');
-  const [category, setCategory] = useState('all');
+  const [category, setCategory] = useState<'all' | Category>('all');
   const [online, setOnline] = useState(navigator.onLine);
+  const [currentLocation, setCurrentLocation] = useState<CurrentLocation | null>(null);
+  const [trackingLocation, setTrackingLocation] = useState(false);
+  const [mapFocus, setMapFocus] = useState<[number, number] | null>(null);
+  const [placementTarget, setPlacementTarget] = useState('');
+  const [draftLocation, setDraftLocation] = useState<[number, number] | null>(null);
+  const watchId = useRef<number | null>(null);
+
   useEffect(() => {
     const handler = () => setOnline(navigator.onLine);
     window.addEventListener('online', handler);
@@ -351,78 +407,295 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
       window.removeEventListener('offline', handler);
     };
   }, []);
-  const places = snapshot.activities.filter(
-    (activity) =>
-      activity.lat &&
-      activity.lng &&
-      (day === 'all' || activity.day === day) &&
-      (category === 'all' || activity.category === category),
+
+  useEffect(() => () => {
+    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
+  }, []);
+
+  const allPlaces = useMemo<MapPlace[]>(() => [
+    ...snapshot.activities.map((activity) => ({
+      id: activity.id,
+      entity: 'activity' as const,
+      title: activity.title,
+      address: activity.address,
+      notes: activity.notes,
+      category: activity.category,
+      lat: activity.lat,
+      lng: activity.lng,
+      startDate: activity.day,
+      endDate: activity.day,
+      time: activity.startTime,
+    })),
+    ...snapshot.accommodations.map((accommodation) => ({
+      id: accommodation.id,
+      entity: 'accommodation' as const,
+      title: accommodation.name,
+      address: accommodation.address,
+      notes: accommodation.notes,
+      category: 'Alojamiento' as const,
+      lat: accommodation.lat,
+      lng: accommodation.lng,
+      startDate: accommodation.startDate,
+      endDate: accommodation.endDate,
+      time: accommodation.checkIn,
+    })),
+  ], [snapshot.accommodations, snapshot.activities]);
+
+  const filteredPlaces = allPlaces.filter((place) =>
+    (day === 'all' || (day >= place.startDate && day <= place.endDate)) &&
+    (category === 'all' || place.category === category),
   );
-  const mapCenter: [number, number] = places.length
-    ? [places.reduce((sum, place) => sum + place.lat!, 0) / places.length, places.reduce((sum, place) => sum + place.lng!, 0) / places.length]
+  const locatedPlaces = filteredPlaces.filter(hasMapCoordinates);
+  const positionablePlaces = [...allPlaces].sort((a, b) =>
+    Number(hasMapCoordinates(a)) - Number(hasMapCoordinates(b)) || a.title.localeCompare(b.title),
+  );
+  const mapCenter: [number, number] = locatedPlaces.length
+    ? [
+        locatedPlaces.reduce((sum, place) => sum + place.lat!, 0) / locatedPlaces.length,
+        locatedPlaces.reduce((sum, place) => sum + place.lng!, 0) / locatedPlaces.length,
+      ]
     : worldCenter;
 
+  const startLocationTracking = () => {
+    if (!navigator.geolocation) {
+      notify('Este navegador no ofrece ubicación');
+      return;
+    }
+    if (watchId.current !== null) navigator.geolocation.clearWatch(watchId.current);
+    setTrackingLocation(true);
+    let receivedLocation = false;
+    let activeWatchId: number | null = null;
+    activeWatchId = navigator.geolocation.watchPosition(
+      ({ coords }) => {
+        const location = { lat: coords.latitude, lng: coords.longitude, accuracy: coords.accuracy };
+        setCurrentLocation(location);
+        setMapFocus([location.lat, location.lng]);
+        if (!receivedLocation) notify('Ubicación actualizada para esta sesión');
+        receivedLocation = true;
+      },
+      () => {
+        if (activeWatchId !== null) navigator.geolocation.clearWatch(activeWatchId);
+        setTrackingLocation(false);
+        watchId.current = null;
+        notify('No se pudo obtener la ubicación. Revisa el permiso del navegador.');
+      },
+      { enableHighAccuracy: true, maximumAge: 10_000, timeout: 15_000 },
+    );
+    watchId.current = activeWatchId;
+  };
+
+  const stopLocationTracking = () => {
+    if (watchId.current !== null) navigator.geolocation?.clearWatch(watchId.current);
+    watchId.current = null;
+    setTrackingLocation(false);
+    notify('Seguimiento detenido');
+  };
+
+  const saveDraftLocation = async () => {
+    if (!placementTarget || !draftLocation) return;
+    const [entity, id] = placementTarget.split(':');
+    if (entity === 'activity') {
+      const activity = snapshot.activities.find((item) => item.id === id);
+      if (activity) await saveActivity({ ...activity, lat: draftLocation[0], lng: draftLocation[1] });
+    } else {
+      const accommodation = snapshot.accommodations.find((item) => item.id === id);
+      if (accommodation) await putAccommodation({ ...accommodation, lat: draftLocation[0], lng: draftLocation[1] });
+    }
+    setPlacementTarget('');
+    setMapFocus(draftLocation);
+    setDraftLocation(null);
+    await refresh();
+    notify('Punto guardado en el mapa');
+  };
+
   return (
-    <section className="page-stack">
-      <Hero title="Mapa" subtitle="Ubicaciones guardadas del viaje" />
-      <div className="filters">
-        <select value={day} onChange={(event) => setDay(event.target.value as 'all' | TripDay)}>
-          <option value="all">Todos los días</option>
-          {tripDateRange(snapshot.activeTrip.startDate, snapshot.activeTrip.endDate).map((tripDay) => <option key={tripDay} value={tripDay}>{formatDate(tripDay)}</option>)}
-        </select>
-        <select value={category} onChange={(event) => setCategory(event.target.value)}>
-          <option value="all">Todas las categorías</option>
-          {categories.map((item) => <option key={item}>{item}</option>)}
-        </select>
+    <section className="page-stack map-page">
+      <Hero title="Mapa" subtitle="Tu viaje, organizado por tipo de lugar" />
+      <div className="map-toolbar">
+        <div className="filters map-filters">
+          <label>
+            <span>Día</span>
+            <select value={day} onChange={(event) => { setDay(event.target.value as 'all' | TripDay); setMapFocus(null); }}>
+              <option value="all">Todos los días</option>
+              {tripDateRange(snapshot.activeTrip.startDate, snapshot.activeTrip.endDate).map((tripDay) => <option key={tripDay} value={tripDay}>{formatDate(tripDay)}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>Tipo de lugar</span>
+            <select value={category} onChange={(event) => { setCategory(event.target.value as 'all' | Category); setMapFocus(null); }}>
+              <option value="all">Todas las categorías</option>
+              {categories.map((item) => <option key={item}>{item}</option>)}
+            </select>
+          </label>
+        </div>
+        <button
+          className={trackingLocation ? 'location-control active' : 'location-control'}
+          onClick={trackingLocation ? stopLocationTracking : startLocationTracking}
+        >
+          {trackingLocation ? <X size={18} /> : <LocateFixed size={18} />}
+          {trackingLocation ? 'Detener seguimiento' : 'Mostrar mi ubicación'}
+        </button>
       </div>
+
+      <div className="map-legend" aria-label="Leyenda del mapa">
+        {mapMarkerLegend.map((item) => {
+          const Icon = markerIconComponents[item.kind];
+          return <span key={item.kind}><i style={{ backgroundColor: item.color }}><Icon size={14} /></i>{item.label}</span>;
+        })}
+      </div>
+
+      <div className="map-placement-panel">
+        <MapPinned size={20} />
+        <label>
+          <span>Asignar o corregir un punto</span>
+          <select
+            aria-label="Lugar que quieres ubicar"
+            value={placementTarget}
+            onChange={(event) => {
+              setPlacementTarget(event.target.value);
+              setDraftLocation(null);
+            }}
+          >
+            <option value="">Selecciona un lugar</option>
+            {positionablePlaces.map((place) => (
+              <option key={`${place.entity}:${place.id}`} value={`${place.entity}:${place.id}`}>
+                {hasMapCoordinates(place) ? 'Actualizar' : 'Sin ubicar'} · {place.title}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p>{placementTarget ? 'Toca el punto exacto en el mapa y confirma la ubicación.' : `${filteredPlaces.length - locatedPlaces.length} lugares del filtro todavía no tienen coordenadas.`}</p>
+      </div>
+
       {!online && <div className="info-band">El listado guardado funciona sin conexión. Las teselas de OpenStreetMap necesitan internet.</div>}
-      <div className="map-wrap" data-testid="trip-map">
-        <MapContainer key={mapCenter.join(',')} center={mapCenter} zoom={places.length ? 12 : 2} scrollWheelZoom={false} className="leaflet-map">
+      <div className={`map-wrap ${placementTarget ? 'is-placing' : ''}`} data-testid="trip-map">
+        <MapContainer center={mapCenter} zoom={locatedPlaces.length ? 12 : 2} scrollWheelZoom className="leaflet-map">
           <TileLayer attribution="&copy; OpenStreetMap contributors" url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-          {places.map((activity) => (
-            <Marker key={activity.id} position={[activity.lat!, activity.lng!]}>
-              <Popup>
-                <strong>{activity.title}</strong>
-                <p>{activity.startTime} · {activity.address}</p>
-                <p>{activity.notes}</p>
-                <a href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer">Google Maps</a>
-                <button
-                  onClick={() => {
-                    sessionStorage.setItem('travelcaris-map-marker', JSON.stringify({
-                      kind: 'Marcador del mapa',
-                      label: activity.title,
-                      query: activity.address || activity.title,
-                      lat: activity.lat,
-                      lng: activity.lng,
-                      activityId: activity.id,
-                    }));
-                    notify('Marcador listo para usar en Explorar');
-                  }}
-                >
-                  Usar en Explorar
-                </button>
-                <button
-                  onClick={async () => {
-                    await saveActivity({ ...activity, visited: true, status: 'Realizado' });
-                    await refresh();
-                    notify('Marcada como realizada');
-                  }}
-                >
-                  Realizada
-                </button>
-              </Popup>
+          <MapViewport focus={mapFocus} center={mapCenter} zoom={locatedPlaces.length ? 12 : 2} />
+          <MapClickCapture enabled={Boolean(placementTarget)} onSelect={setDraftLocation} />
+          {locatedPlaces.map((place) => {
+            const style = mapMarkerStyle(place.category);
+            return (
+              <Marker key={`${place.entity}:${place.id}`} position={[place.lat!, place.lng!]} icon={createMapMarkerIcon(style.kind, style.color)}>
+                <Popup>
+                  <div className="map-popup">
+                    <span className="map-popup-type">{style.label}</span>
+                    <strong>{place.title}</strong>
+                    {(place.time || place.address) && <p>{[place.time, place.address].filter(Boolean).join(' · ')}</p>}
+                    {place.notes && <p>{place.notes}</p>}
+                    <div className="map-popup-actions">
+                      <a href={googleMapsSearch(place.address || place.title)} target="_blank" rel="noreferrer"><Navigation size={15} /> Google Maps</a>
+                      <button
+                        onClick={() => {
+                          sessionStorage.setItem('travelcaris-map-marker', JSON.stringify({
+                            kind: 'Marcador del mapa',
+                            label: place.title,
+                            query: place.address || place.title,
+                            lat: place.lat,
+                            lng: place.lng,
+                            activityId: place.entity === 'activity' ? place.id : undefined,
+                          }));
+                          notify('Marcador listo para usar en Explorar');
+                        }}
+                      >
+                        <MapPin size={15} /> Explorar
+                      </button>
+                      {place.entity === 'activity' && (
+                        <button
+                          onClick={async () => {
+                            const activity = snapshot.activities.find((item) => item.id === place.id);
+                            if (!activity) return;
+                            await saveActivity({ ...activity, visited: true, status: 'Realizado' });
+                            await refresh();
+                            notify('Marcada como realizada');
+                          }}
+                        >
+                          <Check size={15} /> Realizada
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                </Popup>
+              </Marker>
+            );
+          })}
+          {draftLocation && (
+            <Marker position={draftLocation} icon={createDraftMarkerIcon()}>
+              <Popup>Nuevo punto pendiente de confirmar</Popup>
             </Marker>
-          ))}
+          )}
+          {currentLocation && (
+            <>
+              <Circle center={[currentLocation.lat, currentLocation.lng]} radius={currentLocation.accuracy} pathOptions={{ color: '#1479c9', fillColor: '#4ca6e8', fillOpacity: 0.13, weight: 1 }} />
+              <Marker position={[currentLocation.lat, currentLocation.lng]} icon={createCurrentLocationIcon()}>
+                <Popup><strong>Estás aquí</strong><p>Precisión aproximada: {Math.round(currentLocation.accuracy)} m</p></Popup>
+              </Marker>
+            </>
+          )}
         </MapContainer>
       </div>
-      <button
-        className="secondary"
-        onClick={() => navigator.geolocation?.getCurrentPosition(() => notify('Ubicación activada para esta sesión'), () => notify('No se pudo obtener la ubicación'))}
-      >
-        Usar mi ubicación
-      </button>
+      {draftLocation && (
+        <div className="map-confirmation" role="status">
+          <div><strong>Punto seleccionado</strong><span>{draftLocation[0].toFixed(5)}, {draftLocation[1].toFixed(5)}</span></div>
+          <button className="secondary" onClick={() => setDraftLocation(null)}><X size={17} /> Cancelar</button>
+          <button className="primary" onClick={saveDraftLocation}><Check size={17} /> Guardar punto</button>
+        </div>
+      )}
+      {!filteredPlaces.length && <div className="map-empty-state"><MapPin size={23} /><p>No hay lugares para este filtro. Añádelos al itinerario o importa un PDF.</p></div>}
     </section>
   );
+}
+
+function hasMapCoordinates(place: Pick<MapPlace, 'lat' | 'lng'>): place is MapPlace & { lat: number; lng: number } {
+  return Number.isFinite(place.lat) && Number.isFinite(place.lng);
+}
+
+function MapClickCapture({ enabled, onSelect }: { enabled: boolean; onSelect: (point: [number, number]) => void }) {
+  useMapEvents({
+    click(event) {
+      if (enabled) onSelect([event.latlng.lat, event.latlng.lng]);
+    },
+  });
+  return null;
+}
+
+function MapViewport({ focus, center, zoom }: { focus: [number, number] | null; center: [number, number]; zoom: number }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(focus ?? center, focus ? 16 : zoom, { animate: true });
+  }, [center, focus, map, zoom]);
+  return null;
+}
+
+function createMapMarkerIcon(kind: MapMarkerKind, color: string) {
+  const Icon = markerIconComponents[kind];
+  return divIcon({
+    className: 'travel-map-marker-host',
+    html: renderToStaticMarkup(<span className="travel-map-marker" data-marker-kind={kind} style={{ backgroundColor: color }}><Icon size={18} strokeWidth={2.4} /></span>),
+    iconSize: [38, 46],
+    iconAnchor: [19, 44],
+    popupAnchor: [0, -40],
+  });
+}
+
+function createDraftMarkerIcon() {
+  return divIcon({
+    className: 'travel-map-marker-host',
+    html: renderToStaticMarkup(<span className="travel-map-marker draft"><MapPinned size={18} /></span>),
+    iconSize: [38, 46],
+    iconAnchor: [19, 44],
+    popupAnchor: [0, -40],
+  });
+}
+
+function createCurrentLocationIcon() {
+  return divIcon({
+    className: 'travel-map-marker-host',
+    html: renderToStaticMarkup(<span className="current-location-marker" data-testid="current-location-marker"><Navigation size={17} fill="currentColor" /></span>),
+    iconSize: [32, 32],
+    iconAnchor: [16, 16],
+    popupAnchor: [0, -18],
+  });
 }
 
 function MoreView({ snapshot, refresh, notify }: ViewProps) {
@@ -758,6 +1031,7 @@ function EditableAccommodation({ accommodation, refresh, notify }: { accommodati
   return (
     <article className="form-card">
       <h3>{item.name}</h3>
+      <label>Nombre<input value={item.name} onChange={(event) => setItem({ ...item, name: event.target.value })} /></label>
       <label>Dirección<input value={item.address} onChange={(event) => setItem({ ...item, address: event.target.value })} /></label>
       <div className="two-cols">
         <label>Desde<input type="date" value={item.startDate} onChange={(event) => setItem({ ...item, startDate: event.target.value })} /></label>
@@ -767,8 +1041,18 @@ function EditableAccommodation({ accommodation, refresh, notify }: { accommodati
         <label>Check-in<input value={item.checkIn} onChange={(event) => setItem({ ...item, checkIn: event.target.value })} /></label>
         <label>Check-out<input value={item.checkOut} onChange={(event) => setItem({ ...item, checkOut: event.target.value })} /></label>
       </div>
+      <details>
+        <summary>Ubicación exacta en el mapa</summary>
+        <div className="two-cols">
+          <label>Latitud<input type="number" step="any" value={item.lat ?? ''} onChange={(event) => setItem({ ...item, lat: event.target.value ? Number(event.target.value) : undefined })} /></label>
+          <label>Longitud<input type="number" step="any" value={item.lng ?? ''} onChange={(event) => setItem({ ...item, lng: event.target.value ? Number(event.target.value) : undefined })} /></label>
+        </div>
+        <p className="muted">También puedes elegir este alojamiento en Mapa y tocar su posición exacta.</p>
+      </details>
+      <label>Teléfono<input type="tel" value={item.phone} onChange={(event) => setItem({ ...item, phone: event.target.value })} /></label>
       <label>Instrucciones<textarea value={item.entryInstructions} onChange={(event) => setItem({ ...item, entryInstructions: event.target.value })} /></label>
       <label>Equipaje<textarea value={item.luggageNotes} onChange={(event) => setItem({ ...item, luggageNotes: event.target.value })} /></label>
+      <label>Notas<textarea value={item.notes} onChange={(event) => setItem({ ...item, notes: event.target.value })} /></label>
       <label className="checkbox"><input type="checkbox" checked={item.active} onChange={(event) => setItem({ ...item, active: event.target.checked })} /> Marcar activo</label>
       <div className="button-row">
         <MapButtons query={item.address} />

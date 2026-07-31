@@ -21,3 +21,15 @@ test('abre la importación privada de PDF', async ({ page }) => {
   await expect(page.getByText(/no se sube a Vercel/i)).toBeVisible();
   await expect(page.locator('input[type="file"][accept*="pdf"]')).toHaveCount(1);
 });
+
+test('muestra la ubicación actual solo después de conceder permiso', async ({ page, context }) => {
+  await context.grantPermissions(['geolocation']);
+  await context.setGeolocation({ latitude: 40.4168, longitude: -3.7038, accuracy: 12 });
+  await page.goto('/mapa');
+
+  await expect(page.getByTestId('current-location-marker')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Mostrar mi ubicación' }).click();
+
+  await expect(page.getByTestId('current-location-marker')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Detener seguimiento' })).toBeVisible();
+});
