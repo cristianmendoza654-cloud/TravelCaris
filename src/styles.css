@@ -168,6 +168,60 @@ textarea { min-height: 86px; resize: vertical; }
 .trip-card h3 { margin: 0; }
 .trip-card p { display: flex; align-items: center; gap: 6px; margin: 7px 0; }
 .selected-trip { display: inline-flex; align-items: center; gap: 6px; color: var(--brand); font-weight: 850; }
+.explore-workspace { display: grid; gap: 16px; padding: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+.search-composer { display: grid; grid-template-columns: minmax(240px, 2fr) minmax(180px, 1fr) auto; gap: 12px; align-items: end; }
+.input-with-icon { display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); }
+.input-with-icon input { min-width: 0; padding: 0; border: 0; background: transparent; }
+.input-with-icon input:focus { outline: 0; }
+.location-button { white-space: nowrap; }
+.quick-search-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.quick-search-grid button { min-height: 54px; padding: 10px; border: 1px solid var(--line); background: var(--surface-alt); color: var(--text); font-weight: 800; }
+.quick-search-grid button:hover { border-color: var(--brand); color: var(--brand); }
+.provider-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.provider-button { display: flex; justify-content: space-between; align-items: center; min-height: 48px; border: 1px solid var(--line); background: var(--surface); color: var(--text); }
+.add-place-button { justify-self: start; }
+.provider-settings { display: grid; gap: 10px; }
+.provider-setting { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: center; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.provider-setting input { width: 20px; height: 20px; }
+.provider-setting span { display: grid; gap: 3px; }
+.provider-setting small, .compact-list small, .saved-place-row small { display: block; color: var(--muted); }
+.explore-lists { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.explore-lists > section { padding: 16px; border-top: 3px solid var(--brand); background: var(--surface); }
+.section-title { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.section-title h2 { display: flex; align-items: center; gap: 8px; margin: 0 0 10px; font-size: 1.05rem; }
+.compact-list { display: grid; gap: 6px; }
+.compact-list > button { display: grid; gap: 3px; text-align: left; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: transparent; color: var(--text); }
+.saved-place-row { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; min-width: 0; padding: 9px 0; border-bottom: 1px solid var(--line); }
+.saved-place-row div { min-width: 0; overflow-wrap: anywhere; }
+.saved-place-row a, .saved-place-row button, .icon-button { display: inline-grid; place-items: center; width: 38px; min-height: 38px; padding: 0; }
+.segmented-control { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 6px; overflow: hidden; }
+.segmented-control button { border: 0; border-right: 1px solid var(--line); border-radius: 0; background: var(--surface-alt); color: var(--text); }
+.segmented-control button:last-child { border-right: 0; }
+.segmented-control button.selected { background: var(--brand); color: #fff; }
+.three-cols { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.file-button input { padding: 8px 0; }
+.modal-wide { width: min(880px, calc(100vw - 24px)); max-height: 92vh; overflow-y: auto; }
+.modal details { padding: 12px 0; border-top: 1px solid var(--line); }
+.modal summary { margin-bottom: 12px; font-weight: 850; cursor: pointer; }
+.weekly-hours { display: grid; gap: 6px; margin: 10px 0; }
+.hours-row { display: grid; grid-template-columns: 90px auto auto minmax(200px, 1fr) minmax(120px, 1fr); gap: 8px; align-items: start; padding: 8px 0; border-bottom: 1px solid var(--line); }
+.interval-list, .interval-row { display: grid; gap: 6px; }
+.interval-row { grid-template-columns: 1fr 1fr 34px; }
+.interval-row button { min-height: 34px; padding: 0; }
+.small-button { justify-self: start; min-height: 34px; padding: 6px 9px; }
+.checkbox-grid { display: flex; flex-wrap: wrap; gap: 14px; }
+.activity-card.alternative { border-left: 5px solid #bd7b13; }
+.activity-image { grid-column: 1 / -1; width: 100%; height: 180px; object-fit: cover; border-radius: 6px; }
+.detail-line { margin: 6px 0; color: var(--muted); }
+.warning-chip { border-color: #bd7b13 !important; color: #8a5500 !important; background: #fff7e8 !important; }
+.gap-panel { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; padding: 14px 16px; border-left: 5px solid var(--brand); background: var(--surface); }
+.gap-panel h3, .gap-panel p { margin: 0; }
+.gap-panel a { display: inline-flex; align-items: center; gap: 6px; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; color: var(--text); text-decoration: none; }
+.alternatives-section { display: grid; gap: 10px; }
+.section-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%; color: var(--text); background: var(--surface); border: 1px solid var(--line); text-align: left; }
+.section-toggle span:first-child { display: grid; gap: 3px; }
+.section-toggle small { color: var(--muted); }
+.alternatives-list { padding-left: 10px; border-left: 2px solid #bd7b13; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; } }
@@ -187,4 +241,10 @@ textarea { min-height: 86px; resize: vertical; }
   .flight-source-row span:last-child { text-align: left; }
   .time-comparison { grid-template-columns: 1fr; }
   .conflict-row { grid-template-columns: 1fr; }
+  .search-composer, .explore-lists { grid-template-columns: 1fr; }
+  .quick-search-grid, .provider-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .three-cols { grid-template-columns: 1fr; }
+  .hours-row { grid-template-columns: 1fr 1fr; }
+  .hours-row strong, .hours-row .interval-list, .hours-row > input { grid-column: 1 / -1; }
+  .activity-image { height: 150px; }
 }

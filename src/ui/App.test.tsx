@@ -26,7 +26,8 @@ describe('App', () => {
     );
     await userEvent.click(await screen.findByText('Más'));
     await userEvent.click(await screen.findByText('Explorar'));
-    expect(await screen.findByText('Añadir desde enlace')).toBeInTheDocument();
+    expect(await screen.findByText('Añadir lugar encontrado')).toBeInTheDocument();
+    expect(screen.getByText('Free tours')).toBeInTheDocument();
   });
 
   it('muestra el último estado conocido cuando no hay conexión', async () => {

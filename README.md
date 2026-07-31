@@ -27,6 +27,11 @@ El build se genera en `dist`.
 - Gestión de varios viajes, con viaje activo y estados Próximo, En curso, Finalizado y Archivado.
 - Inicio con días restantes, próxima actividad, próximo vuelo, alojamiento, alertas y accesos rápidos.
 - Itinerario editable, mapa, alojamientos, documentos, gastos, equipaje y recordatorios.
+- Actividades enriquecidas con horario planificado, horario semanal por intervalos, fechas especiales, precios por tipo de viajero, reservas, accesibilidad, plan de lluvia y trazabilidad de la fuente.
+- Alternativas separadas del plan principal y detección de huecos que propone búsquedas sin reordenar el día.
+- Explorar por ciudad, zona, alojamiento, actividad, dirección, marcador o ubicación solicitada explícitamente.
+- Búsquedas rápidas familiares y económicas, historial reciente, lugares guardados y alta directa como favorito, alternativa o actividad principal.
+- Proveedores externos activables y ampliables: Google Maps, Apple Maps, Google, Tripadvisor, Civitatis, GuruWalk, GetYourGuide, Viator y webs oficiales.
 - Vuelos iniciales VY8475 y U22315, con normalización de variantes como `U2 2315` y `EZY2315`.
 - Horas programadas, estimadas y reales almacenadas por separado.
 - Edición manual, historial inmutable, bandeja de alertas y detección de retrasos, cancelaciones, terminales y puertas.
@@ -46,6 +51,8 @@ TravelCaris funciona completamente sin API:
 - guarda billetes y tarjetas de embarque localmente;
 - mantiene itinerario, mapas guardados, gastos, documentos y equipaje;
 - no promete información automática en tiempo real.
+
+Las búsquedas de lugares se abren en proveedores externos con texto correctamente codificado. TravelCaris no hace scraping ni intenta extraer contenido restringido. Cuando un proveedor no ofrece una URL de búsqueda estable, la app copia el texto de consulta antes de abrirlo. Horarios, precios y condiciones pueden caducar; cada ficha conserva fuente, estado y fecha de verificación y muestra un aviso según el umbral configurable.
 
 En cada vuelo aparece el número y la fecha que deben introducirse si la fuente oficial no admite un enlace directo estable.
 
@@ -140,7 +147,9 @@ El comando no debe devolver coincidencias. Las pruebas también inspeccionan los
 
 ## Datos, privacidad y copias
 
-Viajes, vuelos, localizadores, billetes, documentos e imágenes se guardan localmente en IndexedDB. Exporta copias periódicas desde Más > Ajustes. Conserva además los documentos esenciales en correo o Archivos del dispositivo.
+Viajes, vuelos, localizadores, billetes, documentos, búsquedas, favoritos e imágenes se guardan localmente en IndexedDB. Exporta copias periódicas desde Más > Ajustes. Conserva además los documentos esenciales en correo o Archivos del dispositivo.
+
+El repositorio solo incluye zonas genéricas para los alojamientos de ejemplo. Las direcciones exactas, reservas y documentos privados se introducen en el dispositivo y no deben añadirse al control de versiones.
 
 Safari puede liberar almacenamiento si el dispositivo necesita espacio o la web permanece mucho tiempo sin uso. TravelCaris no sustituye los sistemas oficiales y no debe ser la única copia de documentos esenciales.
 

@@ -18,6 +18,7 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   CalendarDays,
   Check,
+  Clock3,
   ClipboardList,
   Download,
   Edit3,
@@ -45,10 +46,12 @@ import type {
   Expense,
   TripDay,
 } from '../domain/types';
-import { categories, statuses } from '../domain/types';
+import { categories, statuses, weekdays } from '../domain/types';
+import { emptyPriceDetails, emptyWeeklyOpeningHours, isActivityStale } from '../domain/activity';
 import { expenseTotals } from '../services/calculations';
 import { fileToDataUrl, imageFileToStoredImage } from '../services/files';
-import { appleMapsSearch, googleMapsSearch, googleSearch, shareText, tripadvisorSearch } from '../services/links';
+import { findItineraryGaps } from '../services/planning';
+import { appleMapsSearch, googleMapsSearch, shareText } from '../services/links';
 import {
   createActivity,
   deleteActivity,
@@ -76,6 +79,7 @@ import {
   useAutomaticFlightRefresh,
 } from './Flights';
 import { TripsPanel } from './Trips';
+import { ExploreView } from './Explore';
 
 const today = new Date().toISOString().slice(0, 10);
 const londonCenter: [number, number] = [51.5072, -0.1276];
@@ -163,7 +167,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
     availableDays.includes(today) ? today : snapshot.activeTrip.startDate,
   );
   const dayActivities = useMemo(
-    () => snapshot.activities.filter((activity) => activity.day === selectedDay).sort((a, b) => a.order - b.order),
+    () => snapshot.activities.filter((activity) => activity.day === selectedDay && activity.planType !== 'Alternativa').sort((a, b) => a.order - b.order),
     [snapshot.activities, selectedDay],
   );
   const nextActivity = dayActivities.find((activity) => !activity.visited) ?? dayActivities[0];
@@ -220,7 +224,7 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
       )}
       <section className="timeline" aria-label="Resto del día">
         {dayActivities.map((activity) => (
-          <ActivityCard key={activity.id} activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} compact />
+          <ActivityCard key={activity.id} activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} compact />
         ))}
       </section>
       <section className="info-band">
@@ -236,11 +240,15 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
   const [selectedDay, setSelectedDay] = useState<TripDay>(snapshot.activeTrip.startDate);
   const [editing, setEditing] = useState<Activity | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [showAlternatives, setShowAlternatives] = useState(true);
   const sensors = useSensors(
     useSensor(PointerSensor),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
-  const dayActivities = snapshot.activities.filter((activity) => activity.day === selectedDay).sort((a, b) => a.order - b.order);
+  const allDayActivities = snapshot.activities.filter((activity) => activity.day === selectedDay).sort((a, b) => a.order - b.order);
+  const dayActivities = allDayActivities.filter((activity) => activity.planType !== 'Alternativa');
+  const alternatives = allDayActivities.filter((activity) => activity.planType === 'Alternativa');
+  const gaps = findItineraryGaps(dayActivities);
 
   const onDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
@@ -266,12 +274,42 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
           <div className="timeline">
             {dayActivities.map((activity) => (
               <SortableActivity key={activity.id} activity={activity}>
-                <ActivityCard activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} onEdit={() => setEditing(activity)} />
+                <ActivityCard activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
               </SortableActivity>
             ))}
           </div>
         </SortableContext>
       </DndContext>
+      {gaps.length > 0 && (
+        <section className="gap-panel">
+          <div>
+            <p className="eyebrow">Huecos detectados</p>
+            <h3>Ideas sin mover tu planificación</h3>
+          </div>
+          {gaps.map((gap) => (
+            <NavLink
+              key={`${gap.start}-${gap.end}`}
+              to="/explorar"
+              onClick={() => sessionStorage.setItem('travelcaris-explore-context', JSON.stringify({ kind: 'Zona de Londres', label: `Hueco ${gap.start}-${gap.end}`, query: snapshot.activeTrip.destination }))}
+            >
+              <Clock3 size={17} /> {gap.start}-{gap.end} · Buscar cerca
+            </NavLink>
+          ))}
+        </section>
+      )}
+      <section className="alternatives-section">
+        <button className="section-toggle" onClick={() => setShowAlternatives((value) => !value)}>
+          <span><strong>Alternativas del día</strong><small>{alternatives.length} guardadas</small></span>
+          <span>{showAlternatives ? 'Ocultar' : 'Mostrar'}</span>
+        </button>
+        {showAlternatives && (
+          <div className="timeline alternatives-list">
+            {alternatives.map((activity) => (
+              <ActivityCard key={activity.id} activity={activity} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
+            ))}
+          </div>
+        )}
+      </section>
       {(editing || showNew) && (
         <ActivityEditor
           activity={editing ?? undefined}
@@ -287,47 +325,6 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
           }}
         />
       )}
-    </section>
-  );
-}
-
-function ExploreView({ snapshot, refresh, notify }: ViewProps) {
-  const [query, setQuery] = useState('Restaurantes familiares cerca del British Museum');
-  const [near, setNear] = useState(snapshot.activeTrip.destination);
-  const fullQuery = `${query} ${near}`.trim();
-
-  return (
-    <section className="page-stack">
-      <Hero title="Explorar" subtitle="Busca fuera de la app y guarda lo interesante manualmente" />
-      <div className="form-card">
-        <label>
-          Búsqueda
-          <input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Restaurantes abiertos ahora" />
-        </label>
-        <label>
-          Filtro o zona
-          <select value={near} onChange={(event) => setNear(event.target.value)}>
-            <option>{snapshot.activeTrip.destination}</option>
-            <option>cerca de mi ubicación</option>
-            <option>cerca del alojamiento</option>
-            <option>cerca del British Museum</option>
-            <option>cerca de Westminster</option>
-            <option>restaurantes</option>
-            <option>compras</option>
-            <option>monumentos</option>
-            <option>niños</option>
-            <option>transporte</option>
-            <option>emergencias</option>
-          </select>
-        </label>
-        <div className="grid-actions">
-          <ExternalButton href={googleMapsSearch(fullQuery)} label="Google Maps" />
-          <ExternalButton href={appleMapsSearch(fullQuery)} label="Apple Maps" />
-          <ExternalButton href={tripadvisorSearch(fullQuery)} label="Tripadvisor" />
-          <ExternalButton href={googleSearch(fullQuery)} label="Google" />
-        </div>
-      </div>
-      <AddFromLink snapshot={snapshot} refresh={refresh} notify={notify} />
     </section>
   );
 }
@@ -377,6 +374,21 @@ function MapView({ snapshot, refresh, notify }: ViewProps) {
                 <p>{activity.startTime} · {activity.address}</p>
                 <p>{activity.notes}</p>
                 <a href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer">Google Maps</a>
+                <button
+                  onClick={() => {
+                    sessionStorage.setItem('travelcaris-map-marker', JSON.stringify({
+                      kind: 'Marcador del mapa',
+                      label: activity.title,
+                      query: activity.address || activity.title,
+                      lat: activity.lat,
+                      lng: activity.lng,
+                      activityId: activity.id,
+                    }));
+                    notify('Marcador listo para usar en Explorar');
+                  }}
+                >
+                  Usar en Explorar
+                </button>
                 <button
                   onClick={async () => {
                     await saveActivity({ ...activity, visited: true, status: 'Realizado' });
@@ -444,15 +456,17 @@ function Hero({ title, subtitle, action }: { title: string; subtitle: string; ac
   );
 }
 
-function ActivityCard({ activity, availableDays, refresh, notify, onEdit, compact = false }: {
+function ActivityCard({ activity, availableDays, refresh, notify, onEdit, staleDays = 30, compact = false }: {
   activity: Activity;
   availableDays: string[];
   refresh: () => Promise<void>;
   notify: (message: string) => void;
   onEdit?: () => void;
+  staleDays?: number;
   compact?: boolean;
 }) {
   const navigate = useNavigate();
+  const stale = isActivityStale(activity, staleDays);
   const doShare = async () => {
     const text = shareText(activity.title, [activity.startTime, activity.address, activity.notes]);
     if (navigator.share) await navigator.share({ title: activity.title, text });
@@ -462,26 +476,35 @@ function ActivityCard({ activity, availableDays, refresh, notify, onEdit, compac
     }
   };
   return (
-    <article className={`activity-card ${activity.visited ? 'done' : ''}`}>
+    <article className={`activity-card ${activity.visited ? 'done' : ''} ${activity.planType === 'Alternativa' ? 'alternative' : ''}`}>
+      {activity.mainImage && <img className="activity-image" src={activity.mainImage} alt="" />}
       <div className={`category-dot ${activity.category.toLowerCase().replace(/\s/g, '-')}`} aria-hidden="true" />
       <div className="activity-main">
         <div className="activity-title-row">
-          <span className="time">{activity.startTime}</span>
+          <span className="time">{activity.startTime}{activity.endTime ? `-${activity.endTime}` : ''}</span>
           <h3>{activity.title}</h3>
         </div>
         <p>{activity.description}</p>
         {!compact && <p className="muted">{activity.address}</p>}
         <div className="meta-row">
           <span>{activity.category}</span>
-          <span>{activity.status}</span>
+          <span>{activity.planType}</span>
+          <span>{activity.estimatedDurationMinutes} min</span>
+          <span>{activity.reservationStatus}</span>
           {activity.priority === 'Premium' && <span>Premium</span>}
-          {activity.estimatedTotalPrice > 0 && <span>{activity.estimatedTotalPrice} {activity.currency}</span>}
+          <span>{priceLabel(activity)}</span>
+          {stale && <span className="warning-chip">Verificar datos</span>}
         </div>
+        {!compact && activity.openingHoursNote && <p className="detail-line"><strong>Horario:</strong> {activity.openingHoursNote}</p>}
+        {!compact && activity.rainPlan && <p className="detail-line"><strong>Lluvia:</strong> {activity.rainPlan}</p>}
+        {!compact && (activity.strollerFriendly || activity.accessibility) && <p className="detail-line"><strong>Acceso:</strong> {activity.strollerFriendly ? 'Apto para carrito. ' : ''}{activity.accessibility}</p>}
         <div className="icon-actions">
-          <button aria-label="Editar actividad" title="Editar" onClick={onEdit}><Edit3 size={18} /></button>
+          {onEdit && <button aria-label="Editar actividad" title="Editar" onClick={onEdit}><Edit3 size={18} /></button>}
           <button aria-label="Duplicar actividad" title="Duplicar" onClick={async () => { await duplicateActivity(activity); await refresh(); notify('Actividad duplicada'); }}><ClipboardList size={18} /></button>
           <button aria-label="Compartir actividad" title="Compartir" onClick={doShare}><Share2 size={18} /></button>
           <a aria-label="Abrir mapa" title="Abrir mapa" href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer"><MapIcon size={18} /></a>
+          {activity.officialLink && <a aria-label="Abrir web oficial" title="Web oficial" href={activity.officialLink} target="_blank" rel="noreferrer"><ExternalLink size={18} /></a>}
+          {activity.reservationLink && <a aria-label="Abrir reserva" title="Reserva" href={activity.reservationLink} target="_blank" rel="noreferrer"><FileText size={18} /></a>}
           <button aria-label="Marcar como realizada" title="Realizada" onClick={async () => { await saveActivity({ ...activity, visited: !activity.visited, status: activity.visited ? 'Pendiente' : 'Realizado' }); await refresh(); }}><Check size={18} /></button>
           <button aria-label="Eliminar actividad" title="Eliminar" onClick={async () => { if (confirm('¿Eliminar esta actividad?')) { await deleteActivity(activity.id); await refresh(); notify('Actividad eliminada'); } }}><Trash2 size={18} /></button>
           <button aria-label="Mover a otro día" title="Cambiar día" onClick={async () => { const next = availableDays[(availableDays.indexOf(activity.day) + 1) % availableDays.length]; await moveActivity(activity.id, next); await refresh(); notify(`Movida a ${formatDate(next)}`); navigate('/itinerario'); }}><CalendarDays size={18} /></button>
@@ -507,46 +530,136 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
   onClose: () => void;
   onSaved: () => Promise<void>;
 }) {
-  const [form, setForm] = useState<Partial<Activity>>(activity ?? { title: '', day: defaultDay, startTime: '10:00', category: 'Otros', status: 'Pendiente', currency: 'GBP' });
+  const [form, setForm] = useState<Partial<Activity>>(activity ?? {
+    title: '',
+    day: defaultDay,
+    startTime: '10:00',
+    endTime: '',
+    estimatedDurationMinutes: 60,
+    category: 'Otros',
+    status: 'Pendiente',
+    planType: 'Principal',
+    currency: 'GBP',
+    openingHours: emptyWeeklyOpeningHours(),
+    priceDetails: emptyPriceDetails('GBP'),
+    reservationStatus: 'No necesaria',
+    verificationStatus: 'Pendiente de verificar',
+    environment: 'Sin indicar',
+  });
   const [error, setError] = useState('');
   const set = <K extends keyof Activity>(key: K, value: Activity[K]) => setForm((current) => ({ ...current, [key]: value }));
+  const setPrice = <K extends keyof Activity['priceDetails']>(key: K, value: Activity['priceDetails'][K]) =>
+    setForm((current) => ({ ...current, priceDetails: { ...emptyPriceDetails(current.currency ?? 'GBP'), ...(current.priceDetails ?? {}), [key]: value } }));
   const submit = async () => {
     if (!form.title?.trim()) return setError('El título es obligatorio.');
     if (!form.day || !availableDays.includes(form.day)) return setError('Selecciona un día válido.');
     if (form.officialLink && !isUrl(form.officialLink)) return setError('El enlace oficial no tiene un formato válido.');
-    if (activity) await saveActivity({ ...activity, ...form, day: form.day as TripDay, date: form.day as string });
-    else await createActivity({ ...form, title: form.title, day: form.day as TripDay });
+    if (form.reservationLink && !isUrl(form.reservationLink)) return setError('El enlace de reserva no tiene un formato válido.');
+    const normalized = {
+      ...form,
+      day: form.day as TripDay,
+      date: form.day as string,
+      status: form.planType === 'Alternativa' ? 'Alternativa' as const : form.status ?? 'Pendiente',
+      reservationRequired: ['Necesaria', 'Pendiente', 'Reservada'].includes(form.reservationStatus ?? ''),
+      reservationDone: form.reservationStatus === 'Reservada',
+      adultPrice: form.priceDetails?.adult ?? 0,
+      childPrice: form.priceDetails?.child ?? 0,
+      estimatedTotalPrice: form.priceDetails?.totalEstimate ?? 0,
+      currency: form.priceDetails?.currency ?? form.currency ?? 'GBP',
+    };
+    if (activity) await saveActivity({ ...activity, ...normalized });
+    else await createActivity({ ...normalized, title: form.title, day: form.day as TripDay });
     await onSaved();
     onClose();
   };
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label="Editor de actividad">
-      <div className="modal">
+      <div className="modal modal-wide">
         <h2>{activity ? 'Editar actividad' : 'Crear actividad'}</h2>
         {error && <p className="error">{error}</p>}
         <label>Título<input value={form.title ?? ''} onChange={(event) => set('title', event.target.value)} /></label>
-        <div className="two-cols">
+        <div className="three-cols">
           <label>Día<select value={form.day} onChange={(event) => set('day', event.target.value as TripDay)}>{availableDays.map((day) => <option key={day}>{day}</option>)}</select></label>
-          <label>Hora<input type="time" value={form.startTime ?? ''} onChange={(event) => set('startTime', event.target.value)} /></label>
+          <label>Inicio<input type="time" value={form.startTime ?? ''} onChange={(event) => set('startTime', event.target.value)} /></label>
+          <label>Fin<input type="time" value={form.endTime ?? ''} onChange={(event) => set('endTime', event.target.value)} /></label>
+        </div>
+        <div className="three-cols">
+          <label>Duración (min)<input type="number" min="0" value={form.estimatedDurationMinutes ?? 60} onChange={(event) => set('estimatedDurationMinutes', Number(event.target.value))} /></label>
+          <label>Categoría<select value={form.category} onChange={(event) => set('category', event.target.value as Activity['category'])}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>Plan<select value={form.planType} onChange={(event) => set('planType', event.target.value as Activity['planType'])}><option>Principal</option><option>Alternativa</option></select></label>
         </div>
         <div className="two-cols">
-          <label>Categoría<select value={form.category} onChange={(event) => set('category', event.target.value as Activity['category'])}>{categories.map((item) => <option key={item}>{item}</option>)}</select></label>
           <label>Estado<select value={form.status} onChange={(event) => set('status', event.target.value as Activity['status'])}>{statuses.map((item) => <option key={item}>{item}</option>)}</select></label>
+          <label>Prioridad<select value={form.priority ?? 'Media'} onChange={(event) => set('priority', event.target.value as Activity['priority'])}><option>Baja</option><option>Media</option><option>Alta</option><option>Premium</option></select></label>
         </div>
         <label>Descripción<textarea value={form.description ?? ''} onChange={(event) => set('description', event.target.value)} /></label>
         <label>Dirección<input value={form.address ?? ''} onChange={(event) => set('address', event.target.value)} /></label>
-        <div className="two-cols">
-          <label>Latitud<input type="number" step="any" value={form.lat ?? ''} onChange={(event) => set('lat', Number(event.target.value))} /></label>
-          <label>Longitud<input type="number" step="any" value={form.lng ?? ''} onChange={(event) => set('lng', Number(event.target.value))} /></label>
-        </div>
-        <div className="two-cols">
-          <label>Precio total<input type="number" min="0" value={form.estimatedTotalPrice ?? 0} onChange={(event) => set('estimatedTotalPrice', Number(event.target.value))} /></label>
-          <label>Moneda<select value={form.currency} onChange={(event) => set('currency', event.target.value as 'GBP' | 'EUR')}><option>GBP</option><option>EUR</option></select></label>
-        </div>
-        <label>Enlace oficial<input value={form.officialLink ?? ''} onChange={(event) => set('officialLink', event.target.value)} /></label>
+        <details>
+          <summary>Ubicación y horarios de apertura</summary>
+          <div className="two-cols">
+            <label>Latitud<input type="number" step="any" value={form.lat ?? ''} onChange={(event) => set('lat', Number(event.target.value))} /></label>
+            <label>Longitud<input type="number" step="any" value={form.lng ?? ''} onChange={(event) => set('lng', Number(event.target.value))} /></label>
+          </div>
+          <WeeklyHoursEditor value={form.openingHours ?? emptyWeeklyOpeningHours()} onChange={(value) => set('openingHours', value)} />
+          <label>Fechas u horarios especiales<textarea value={form.specialHours ?? ''} onChange={(event) => set('specialHours', event.target.value)} /></label>
+          <label>Texto libre de horario<textarea value={form.openingHoursNote ?? ''} onChange={(event) => set('openingHoursNote', event.target.value)} /></label>
+        </details>
+        <details open>
+          <summary>Precio y reserva</summary>
+          <div className="three-cols">
+            <label>Tipo<select value={form.priceDetails?.kind ?? 'Desconocido'} onChange={(event) => setPrice('kind', event.target.value as Activity['priceDetails']['kind'])}><option>Gratis</option><option>Precio fijo</option><option>Desde</option><option>Aproximado</option><option>Donativo</option><option>Desconocido</option></select></label>
+            <label>Moneda<select value={form.priceDetails?.currency ?? 'GBP'} onChange={(event) => setPrice('currency', event.target.value as 'GBP' | 'EUR')}><option>GBP</option><option>EUR</option></select></label>
+            <label>Unidad<select value={form.priceDetails?.unit ?? 'persona'} onChange={(event) => setPrice('unit', event.target.value as Activity['priceDetails']['unit'])}><option>persona</option><option>familia</option><option>actividad</option></select></label>
+          </div>
+          <div className="three-cols">
+            <label>Adulto<input type="number" min="0" value={form.priceDetails?.adult ?? 0} onChange={(event) => setPrice('adult', Number(event.target.value))} /></label>
+            <label>Niño<input type="number" min="0" value={form.priceDetails?.child ?? 0} onChange={(event) => setPrice('child', Number(event.target.value))} /></label>
+            <label>Bebé<input type="number" min="0" value={form.priceDetails?.baby ?? 0} onChange={(event) => setPrice('baby', Number(event.target.value))} /></label>
+            <label>Familia<input type="number" min="0" value={form.priceDetails?.family ?? 0} onChange={(event) => setPrice('family', Number(event.target.value))} /></label>
+            <label>Total estimado<input type="number" min="0" value={form.priceDetails?.totalEstimate ?? 0} onChange={(event) => setPrice('totalEstimate', Number(event.target.value))} /></label>
+          </div>
+          <label>Nota de precio<input value={form.priceDetails?.note ?? ''} onChange={(event) => setPrice('note', event.target.value)} /></label>
+          <div className="two-cols">
+            <label>Reserva<select value={form.reservationStatus ?? 'No necesaria'} onChange={(event) => set('reservationStatus', event.target.value as Activity['reservationStatus'])}>{['No necesaria', 'Recomendada', 'Necesaria', 'Pendiente', 'Reservada', 'No disponible'].map((item) => <option key={item}>{item}</option>)}</select></label>
+            <label>Referencia<input value={form.reservationReference ?? ''} onChange={(event) => set('reservationReference', event.target.value)} /></label>
+          </div>
+          <label>Enlace de reserva<input value={form.reservationLink ?? ''} onChange={(event) => set('reservationLink', event.target.value)} /></label>
+          <div className="two-cols">
+            <label>Plazo o llegada<input value={form.bookingDeadline ?? ''} onChange={(event) => set('bookingDeadline', event.target.value)} /></label>
+            <label>Cancelación<input value={form.cancellationPolicy ?? ''} onChange={(event) => set('cancellationPolicy', event.target.value)} /></label>
+          </div>
+        </details>
+        <details>
+          <summary>Familia, accesibilidad y clima</summary>
+          <div className="two-cols">
+            <label>Entorno<select value={form.environment ?? 'Sin indicar'} onChange={(event) => set('environment', event.target.value as Activity['environment'])}><option>Interior</option><option>Exterior</option><option>Mixto</option><option>Sin indicar</option></select></label>
+            <label>Edad mínima<input value={form.minimumAge ?? ''} onChange={(event) => set('minimumAge', event.target.value)} /></label>
+          </div>
+          <label>Accesibilidad<textarea value={form.accessibility ?? ''} onChange={(event) => set('accessibility', event.target.value)} /></label>
+          <label>Plan de lluvia<textarea value={form.rainPlan ?? ''} onChange={(event) => set('rainPlan', event.target.value)} /></label>
+          <div className="checkbox-grid">
+            <label className="checkbox"><input type="checkbox" checked={!!form.strollerFriendly} onChange={(event) => set('strollerFriendly', event.target.checked)} /> Apto para carrito</label>
+            <label className="checkbox"><input type="checkbox" checked={!!form.familyFriendly} onChange={(event) => set('familyFriendly', event.target.checked)} /> Familiar</label>
+            <label className="checkbox"><input type="checkbox" checked={!!form.favorite} onChange={(event) => set('favorite', event.target.checked)} /> Favorito</label>
+          </div>
+        </details>
+        {(form.category === 'Tour' || form.category === 'Free tour') && <details open><summary>Datos del tour</summary><div className="two-cols"><label>Proveedor<input value={form.tourProvider ?? ''} onChange={(event) => set('tourProvider', event.target.value)} /></label><label>Idioma<input value={form.tourLanguage ?? ''} onChange={(event) => set('tourLanguage', event.target.value)} /></label></div><label>Punto de encuentro<input value={form.meetingPoint ?? ''} onChange={(event) => set('meetingPoint', event.target.value)} /></label><label>Tipo de tour<input value={form.tourType ?? ''} onChange={(event) => set('tourType', event.target.value)} /></label><label>Propina<textarea value={form.tipGuidance ?? ''} onChange={(event) => set('tipGuidance', event.target.value)} /></label></details>}
+        {form.category === 'Restaurante' && <details open><summary>Datos del restaurante</summary><div className="two-cols"><label>Cocina<input value={form.restaurantCuisine ?? ''} onChange={(event) => set('restaurantCuisine', event.target.value)} /></label><label>Comida<input value={form.mealType ?? ''} onChange={(event) => set('mealType', event.target.value)} /></label></div><label>Opciones alimentarias<input value={form.dietaryOptions ?? ''} onChange={(event) => set('dietaryOptions', event.target.value)} /></label><label>Plataforma de reserva<input value={form.bookingPlatform ?? ''} onChange={(event) => set('bookingPlatform', event.target.value)} /></label></details>}
+        {['Ocio', 'Espectáculo', 'Experiencia'].includes(form.category ?? '') && <details open><summary>Datos de ocio</summary><div className="two-cols"><label>Tipo<input value={form.leisureType ?? ''} onChange={(event) => set('leisureType', event.target.value)} /></label><label>Sesión<input value={form.showTime ?? ''} onChange={(event) => set('showTime', event.target.value)} /></label></div><label>Recinto<input value={form.venue ?? ''} onChange={(event) => set('venue', event.target.value)} /></label></details>}
+        <details>
+          <summary>Fuente y verificación</summary>
+          <label>Enlace oficial<input value={form.officialLink ?? ''} onChange={(event) => set('officialLink', event.target.value)} /></label>
+          <div className="two-cols">
+            <label>Fuente<input value={form.sourceName ?? ''} onChange={(event) => set('sourceName', event.target.value)} /></label>
+            <label>URL de la fuente<input value={form.sourceUrl ?? ''} onChange={(event) => set('sourceUrl', event.target.value)} /></label>
+          </div>
+          <div className="two-cols">
+            <label>Verificación<select value={form.verificationStatus ?? 'Pendiente de verificar'} onChange={(event) => set('verificationStatus', event.target.value as Activity['verificationStatus'])}><option>Verificado</option><option>Pendiente de verificar</option><option>Fuente no oficial</option></select></label>
+            <label>Última comprobación<input type="date" value={form.lastVerifiedAt ?? ''} onChange={(event) => set('lastVerifiedAt', event.target.value)} /></label>
+          </div>
+          <label>Nota de verificación<textarea value={form.verificationNote ?? ''} onChange={(event) => set('verificationNote', event.target.value)} /></label>
+        </details>
         <label>Notas<textarea value={form.notes ?? ''} onChange={(event) => set('notes', event.target.value)} /></label>
-        <label className="checkbox"><input type="checkbox" checked={!!form.reservationRequired} onChange={(event) => set('reservationRequired', event.target.checked)} /> Reserva necesaria</label>
-        <label className="checkbox"><input type="checkbox" checked={!!form.favorite} onChange={(event) => set('favorite', event.target.checked)} /> Favorito</label>
         <ImageInput
           onImage={async (image) => {
             setForm((current) => ({ ...current, mainImage: image.dataUrl, gallery: [...(current.gallery ?? []), image] }));
@@ -561,28 +674,33 @@ function ActivityEditor({ activity, availableDays, defaultDay, onClose, onSaved 
   );
 }
 
-function AddFromLink({ snapshot, refresh, notify }: ViewProps) {
-  const [link, setLink] = useState('');
-  const [title, setTitle] = useState('');
-  const [day, setDay] = useState<TripDay>(snapshot.activeTrip.startDate);
-  const detected = title || detectTitleFromLink(link);
+function WeeklyHoursEditor({ value, onChange }: { value: Activity['openingHours']; onChange: (value: Activity['openingHours']) => void }) {
+  const update = (day: keyof Activity['openingHours'], patch: Partial<Activity['openingHours'][keyof Activity['openingHours']]>) =>
+    onChange({ ...value, [day]: { ...value[day], ...patch } });
   return (
-    <section className="form-card">
-      <h2>Añadir desde enlace</h2>
-      <label>Enlace pegado<input value={link} onChange={(event) => setLink(event.target.value)} placeholder="https://..." /></label>
-      <label>Nombre<input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={detected || 'Nombre del lugar'} /></label>
-      <label>Día<select value={day} onChange={(event) => setDay(event.target.value as TripDay)}>{tripDateRange(snapshot.activeTrip.startDate, snapshot.activeTrip.endDate).map((item) => <option key={item}>{item}</option>)}</select></label>
-      <button className="primary" onClick={async () => {
-        if (!link || !isUrl(link)) return notify('Pega un enlace válido');
-        await createActivity({ title: detected || 'Lugar encontrado', day, officialLink: link, notes: 'Añadido desde enlace. Completar datos manualmente.', category: 'Otros' });
-        await refresh();
-        notify('Lugar añadido al itinerario');
-      }}>
-        <Plus size={18} /> Añadir manualmente al itinerario
-      </button>
-      <p className="muted">La app no extrae datos restringidos de Google Maps o Tripadvisor. Detecta texto básico y permite completar el resto.</p>
-      <p className="muted">Actividades guardadas: {snapshot.activities.length}</p>
-    </section>
+    <div className="weekly-hours">
+      {weekdays.map((day) => {
+        const schedule = value[day];
+        return (
+          <div className="hours-row" key={day}>
+            <strong>{day}</strong>
+            <label className="checkbox"><input type="checkbox" checked={schedule.closed} onChange={(event) => update(day, { closed: event.target.checked })} /> Cerrado</label>
+            <label className="checkbox"><input type="checkbox" checked={schedule.allDay} onChange={(event) => update(day, { allDay: event.target.checked })} /> 24 h</label>
+            <div className="interval-list">
+              {schedule.intervals.map((interval, index) => (
+                <div className="interval-row" key={`${day}-${index}`}>
+                  <input type="time" value={interval.open} onChange={(event) => update(day, { intervals: schedule.intervals.map((item, current) => current === index ? { ...item, open: event.target.value } : item) })} />
+                  <input type="time" value={interval.close} onChange={(event) => update(day, { intervals: schedule.intervals.map((item, current) => current === index ? { ...item, close: event.target.value } : item) })} />
+                  <button type="button" aria-label={`Eliminar intervalo de ${day}`} onClick={() => update(day, { intervals: schedule.intervals.filter((_, current) => current !== index) })}><Trash2 size={15} /></button>
+                </div>
+              ))}
+              <button type="button" className="small-button" onClick={() => update(day, { intervals: [...schedule.intervals, { open: '10:00', close: '18:00' }] })}><Plus size={15} /> Intervalo</button>
+            </div>
+            <input value={schedule.note} onChange={(event) => update(day, { note: event.target.value })} placeholder="Nota" />
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -752,6 +870,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="form-card">
         <label>Presupuesto GBP<input type="number" value={snapshot.settings.budgetGbp} onChange={async (event) => { await putSettings({ ...snapshot.settings, budgetGbp: Number(event.target.value) }); await refresh(); }} /></label>
         <label>Cambio GBP a EUR<input type="number" step="0.01" value={snapshot.settings.gbpToEur} onChange={async (event) => { await putSettings({ ...snapshot.settings, gbpToEur: Number(event.target.value) }); await refresh(); }} /></label>
+        <label>Avisar si no se verifica en (días)<input type="number" min="1" max="365" value={snapshot.settings.placeInfoStaleDays} onChange={async (event) => { await putSettings({ ...snapshot.settings, placeInfoStaleDays: Number(event.target.value) || 30 }); await refresh(); }} /></label>
         <div className="grid-actions">
           <button onClick={exportJson}><Download size={18} /> Exportar JSON</button>
           <button onClick={() => downloadText(`${backupPrefix}-itinerario.txt`, snapshot.activities.map((a) => `${a.day} ${a.startTime} - ${a.title}`).join('\n'))}>Itinerario texto</button>
@@ -772,7 +891,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       {preview && <div className="form-card"><h3>Vista previa</h3><p>{preview.activities?.length ?? 0} actividades, {preview.expenses?.length ?? 0} gastos.</p><button className="primary" onClick={async () => { await importBackup(preview, 'replace'); setPreview(null); await refresh(); notify('Copia importada'); }}>Sustituir datos</button><button className="secondary" onClick={async () => { await importBackup(preview, 'merge'); setPreview(null); await refresh(); notify('Copia combinada'); }}>Combinar</button></div>}
       <div className="danger-zone">
         <button onClick={async () => { if (confirm('¿Restaurar el itinerario original?')) { await restoreInitialData(); await refresh(); notify('Itinerario original restaurado'); } }}>Restaurar itinerario original</button>
-        <p>TravelCaris 2.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
@@ -830,22 +949,21 @@ function recommendedDeparture(time: string) {
   return date.toTimeString().slice(0, 5);
 }
 
+function priceLabel(activity: Activity) {
+  const price = activity.priceDetails;
+  if (price.kind === 'Gratis') return 'Gratis';
+  if (price.kind === 'Desconocido') return 'Precio por verificar';
+  const amount = price.totalEstimate || price.family || price.adult || activity.estimatedTotalPrice;
+  const prefix = price.kind === 'Desde' ? 'Desde ' : price.kind === 'Aproximado' ? 'Aprox. ' : price.kind === 'Donativo' ? 'Donativo ' : '';
+  return amount ? `${prefix}${amount} ${price.currency}` : price.kind;
+}
+
 function isUrl(value: string) {
   try {
     new URL(value);
     return true;
   } catch {
     return false;
-  }
-}
-
-function detectTitleFromLink(link: string) {
-  try {
-    const url = new URL(link);
-    const raw = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() ?? '');
-    return raw.replace(/[-_+]/g, ' ').slice(0, 60);
-  } catch {
-    return '';
   }
 }
 

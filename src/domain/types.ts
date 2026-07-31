@@ -43,6 +43,12 @@ export const categories = [
   'Reserva',
   'Mercado',
   'Paseo',
+  'Tour',
+  'Free tour',
+  'Ocio',
+  'Espectáculo',
+  'Experiencia',
+  'Emergencia',
   'Otros',
 ] as const;
 
@@ -67,6 +73,42 @@ export interface StoredImage {
   dataUrl: string;
   createdAt: string;
 }
+
+export const weekdays = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'] as const;
+export type Weekday = (typeof weekdays)[number];
+
+export interface OpeningInterval {
+  open: string;
+  close: string;
+}
+
+export interface DayOpeningHours {
+  closed: boolean;
+  allDay: boolean;
+  intervals: OpeningInterval[];
+  note: string;
+}
+
+export type WeeklyOpeningHours = Record<Weekday, DayOpeningHours>;
+
+export type PriceKind = 'Gratis' | 'Precio fijo' | 'Desde' | 'Aproximado' | 'Donativo' | 'Desconocido';
+
+export interface PriceDetails {
+  kind: PriceKind;
+  adult: number;
+  child: number;
+  baby: number;
+  family: number;
+  totalEstimate: number;
+  currency: 'GBP' | 'EUR';
+  unit: 'persona' | 'familia' | 'actividad';
+  note: string;
+}
+
+export type ReservationStatus = 'No necesaria' | 'Recomendada' | 'Necesaria' | 'Pendiente' | 'Reservada' | 'No disponible';
+export type VerificationStatus = 'Verificado' | 'Pendiente de verificar' | 'Fuente no oficial';
+export type PlanType = 'Principal' | 'Alternativa';
+export type PlaceEnvironment = 'Interior' | 'Exterior' | 'Mixto' | 'Sin indicar';
 
 export interface Activity {
   id: string;
@@ -101,6 +143,107 @@ export interface Activity {
   order: number;
   visited: boolean;
   favorite: boolean;
+  planType: PlanType;
+  openingHours: WeeklyOpeningHours;
+  specialHours: string;
+  openingHoursNote: string;
+  priceDetails: PriceDetails;
+  reservationStatus: ReservationStatus;
+  bookingDeadline: string;
+  cancellationPolicy: string;
+  meetingPoint: string;
+  accessibility: string;
+  strollerFriendly: boolean;
+  familyFriendly: boolean;
+  minimumAge: string;
+  rainPlan: string;
+  environment: PlaceEnvironment;
+  documents: string[];
+  sourceName: string;
+  sourceUrl: string;
+  verificationStatus: VerificationStatus;
+  lastVerifiedAt: string;
+  verificationNote: string;
+  tourProvider: string;
+  tourLanguage: string;
+  tourType: string;
+  tipGuidance: string;
+  restaurantCuisine: string;
+  mealType: string;
+  dietaryOptions: string;
+  bookingPlatform: string;
+  leisureType: string;
+  showTime: string;
+  venue: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const exploreContextKinds = [
+  'Ciudad completa',
+  'Ubicación actual',
+  'Alojamiento activo',
+  'Actividad del itinerario',
+  'Dirección escrita',
+  'Marcador del mapa',
+  'Zona de Londres',
+] as const;
+export type ExploreContextKind = (typeof exploreContextKinds)[number];
+
+export interface ExploreContext {
+  kind: ExploreContextKind;
+  label: string;
+  query: string;
+  lat?: number;
+  lng?: number;
+  activityId?: string;
+}
+
+export type SearchProviderKind =
+  | 'google-maps'
+  | 'apple-maps'
+  | 'google'
+  | 'tripadvisor'
+  | 'civitatis'
+  | 'guruwalk'
+  | 'getyourguide'
+  | 'viator'
+  | 'official'
+  | 'custom';
+
+export interface SearchProvider {
+  id: string;
+  name: string;
+  kind: SearchProviderKind;
+  urlTemplate: string;
+  enabled: boolean;
+  supportsStableSearchUrl: boolean;
+  order: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SearchHistoryEntry {
+  id: string;
+  tripId: string;
+  query: string;
+  context: ExploreContext;
+  providerId: string;
+  createdAt: string;
+}
+
+export interface SavedPlace {
+  id: string;
+  tripId: string;
+  name: string;
+  address: string;
+  category: Category;
+  sourceLink: string;
+  image?: string;
+  notes: string;
+  favorite: boolean;
+  lat?: number;
+  lng?: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -208,6 +351,7 @@ export interface AppSettings {
   flightNotifications: boolean;
   flightDataSaver: boolean;
   flightWifiOnly: boolean;
+  placeInfoStaleDays: number;
   lastFlightQueryAt?: string;
 }
 
@@ -347,5 +491,8 @@ export interface BackupData {
   flights: Flight[];
   flightStatusHistory: FlightStatusHistory[];
   flightAlerts: FlightAlert[];
+  searchProviders: SearchProvider[];
+  searchHistory: SearchHistoryEntry[];
+  savedPlaces: SavedPlace[];
   settings: AppSettings;
 }

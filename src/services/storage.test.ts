@@ -6,8 +6,11 @@ import {
   getSnapshot,
   importBackup,
   moveActivity,
+  recordSearch,
   reorderActivities,
   restoreInitialData,
+  savePlace,
+  saveSearchProvider,
   saveActivity,
 } from './storage';
 
@@ -49,5 +52,30 @@ describe('storage repository', () => {
     await importBackup(backup, 'replace');
     const snapshot = await getSnapshot();
     expect(snapshot.activities.some((activity) => activity.title === 'Lugar para exportar')).toBe(true);
+    expect(backup.searchProviders.length).toBeGreaterThan(5);
+  });
+
+  it('persiste proveedores, historial y lugares guardados por viaje', async () => {
+    await restoreInitialData();
+    let snapshot = await getSnapshot();
+    const provider = snapshot.searchProviders[0];
+    await saveSearchProvider({ ...provider, enabled: false });
+    await recordSearch({
+      query: 'free tours con niños',
+      context: { kind: 'Zona de Londres', label: 'Westminster', query: 'Westminster, London' },
+      providerId: provider.id,
+    });
+    await savePlace({
+      name: 'Lugar de prueba',
+      address: 'Westminster, London',
+      category: 'Tour',
+      sourceLink: 'https://example.com',
+      notes: '',
+      favorite: true,
+    });
+    snapshot = await getSnapshot();
+    expect(snapshot.searchProviders.find((item) => item.id === provider.id)?.enabled).toBe(false);
+    expect(snapshot.searchHistory[0].query).toBe('free tours con niños');
+    expect(snapshot.savedPlaces[0].name).toBe('Lugar de prueba');
   });
 });

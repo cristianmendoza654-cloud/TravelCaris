@@ -5,11 +5,13 @@ import {
   initialFlights,
   initialPackingItems,
   initialReminders,
+  initialSearchProviders,
   initialSettings,
   initialTransports,
   initialTrips,
   londonTripId,
 } from '../domain/initialData';
+import { completeActivity, richActivityDefaults } from '../domain/activity';
 import type {
   Accommodation,
   Activity,
@@ -22,6 +24,9 @@ import type {
   FlightStatusResult,
   PackingItem,
   Reminder,
+  SavedPlace,
+  SearchHistoryEntry,
+  SearchProvider,
   Transport,
   TravelDocument,
   Trip,
@@ -34,7 +39,10 @@ const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 
 export async function ensureInitialData() {
   const settings = await db.settings.get('settings');
-  if (settings?.initialized && (await db.trips.count()) > 0) return;
+  if (settings?.initialized && (await db.trips.count()) > 0) {
+    if ((await db.searchProviders.count()) === 0) await db.searchProviders.bulkPut(clone(initialSearchProviders));
+    return;
+  }
   await restoreInitialData();
 }
 
@@ -48,6 +56,7 @@ export async function restoreInitialData() {
     await db.packingItems.bulkPut(clone(initialPackingItems));
     await db.reminders.bulkPut(clone(initialReminders));
     await db.flights.bulkPut(clone(initialFlights));
+    await db.searchProviders.bulkPut(clone(initialSearchProviders));
     await db.settings.put(clone(initialSettings));
   });
 }
@@ -70,6 +79,9 @@ export async function getSnapshot() {
     flights,
     flightStatusHistory,
     flightAlerts,
+    searchProviders,
+    searchHistory,
+    savedPlaces,
   ] = await Promise.all([
     db.activities.where('tripId').equals(activeTripId).toArray(),
     db.accommodations.where('tripId').equals(activeTripId).toArray(),
@@ -81,13 +93,16 @@ export async function getSnapshot() {
     db.flights.where('tripId').equals(activeTripId).sortBy('scheduledDate'),
     db.flightStatusHistory.toArray(),
     db.flightAlerts.where('tripId').equals(activeTripId).reverse().sortBy('createdAt'),
+    db.searchProviders.orderBy('order').toArray(),
+    db.searchHistory.where('tripId').equals(activeTripId).reverse().sortBy('createdAt'),
+    db.savedPlaces.where('tripId').equals(activeTripId).reverse().sortBy('createdAt'),
   ]);
   const flightIds = new Set(flights.map((flight) => flight.id));
 
   return {
     trips,
     activeTrip: trips.find((trip) => trip.id === activeTripId) ?? initialTrips[0],
-    activities: activities.sort(sortActivities),
+    activities: activities.map(completeActivity).sort(sortActivities),
     accommodations,
     transports,
     documents,
@@ -99,7 +114,10 @@ export async function getSnapshot() {
       .filter((entry) => flightIds.has(entry.flightId))
       .sort((a, b) => b.detectedAt.localeCompare(a.detectedAt)),
     flightAlerts,
-    settings: { ...settings, activeTripId },
+    searchProviders,
+    searchHistory: searchHistory.slice(0, 30),
+    savedPlaces,
+    settings: { ...initialSettings, ...settings, activeTripId },
   };
 }
 
@@ -115,7 +133,7 @@ async function activeTripId() {
 
 export async function saveActivity(activity: Activity) {
   await ensureInitialData();
-  await db.activities.put({ ...activity, date: activity.day, updatedAt: new Date().toISOString() });
+  await db.activities.put(completeActivity({ ...activity, date: activity.day, updatedAt: new Date().toISOString() }));
 }
 
 export async function createActivity(input: Partial<Activity> & Pick<Activity, 'title' | 'day'>) {
@@ -123,6 +141,7 @@ export async function createActivity(input: Partial<Activity> & Pick<Activity, '
   const existing = await db.activities.where('tripId').equals(tripId).and((item) => item.day === input.day).toArray();
   const date = new Date().toISOString();
   const activity: Activity = {
+    ...richActivityDefaults(),
     id: uuid(),
     tripId,
     title: input.title,
@@ -155,6 +174,47 @@ export async function createActivity(input: Partial<Activity> & Pick<Activity, '
     order: existing.length + 1,
     visited: input.visited ?? false,
     favorite: input.favorite ?? false,
+    planType: input.planType ?? (input.status === 'Alternativa' ? 'Alternativa' : 'Principal'),
+    openingHours: input.openingHours ?? richActivityDefaults().openingHours,
+    specialHours: input.specialHours ?? '',
+    openingHoursNote: input.openingHoursNote ?? '',
+    priceDetails: {
+      ...richActivityDefaults().priceDetails,
+      currency: input.currency ?? 'GBP',
+      adult: input.adultPrice ?? 0,
+      child: input.childPrice ?? 0,
+      totalEstimate: input.estimatedTotalPrice ?? 0,
+      ...(input.priceDetails ?? {}),
+    },
+    reservationStatus:
+      input.reservationStatus ??
+      (input.reservationDone ? 'Reservada' : input.reservationRequired ? 'Necesaria' : 'No necesaria'),
+    bookingDeadline: input.bookingDeadline ?? '',
+    cancellationPolicy: input.cancellationPolicy ?? '',
+    meetingPoint: input.meetingPoint ?? '',
+    accessibility: input.accessibility ?? '',
+    strollerFriendly: input.strollerFriendly ?? false,
+    familyFriendly: input.familyFriendly ?? true,
+    minimumAge: input.minimumAge ?? '',
+    rainPlan: input.rainPlan ?? '',
+    environment: input.environment ?? 'Sin indicar',
+    documents: input.documents ?? [],
+    sourceName: input.sourceName ?? '',
+    sourceUrl: input.sourceUrl ?? '',
+    verificationStatus: input.verificationStatus ?? 'Pendiente de verificar',
+    lastVerifiedAt: input.lastVerifiedAt ?? '',
+    verificationNote: input.verificationNote ?? '',
+    tourProvider: input.tourProvider ?? '',
+    tourLanguage: input.tourLanguage ?? '',
+    tourType: input.tourType ?? '',
+    tipGuidance: input.tipGuidance ?? '',
+    restaurantCuisine: input.restaurantCuisine ?? '',
+    mealType: input.mealType ?? '',
+    dietaryOptions: input.dietaryOptions ?? '',
+    bookingPlatform: input.bookingPlatform ?? '',
+    leisureType: input.leisureType ?? '',
+    showTime: input.showTime ?? '',
+    venue: input.venue ?? '',
     createdAt: date,
     updatedAt: date,
   };
@@ -225,6 +285,50 @@ export async function putReminder(reminder: Reminder) {
 export async function putSettings(settings: AppSettings) {
   await ensureInitialData();
   await db.settings.put(settings);
+}
+
+export async function saveSearchProvider(provider: SearchProvider) {
+  await ensureInitialData();
+  await db.searchProviders.put({ ...provider, updatedAt: new Date().toISOString() });
+}
+
+export async function recordSearch(entry: Omit<SearchHistoryEntry, 'id' | 'tripId' | 'createdAt'>) {
+  await ensureInitialData();
+  const history: SearchHistoryEntry = {
+    ...entry,
+    id: uuid(),
+    tripId: await activeTripId(),
+    createdAt: new Date().toISOString(),
+  };
+  await db.searchHistory.add(history);
+  const entries = await db.searchHistory.where('tripId').equals(history.tripId).reverse().sortBy('createdAt');
+  if (entries.length > 30) await db.searchHistory.bulkDelete(entries.slice(30).map((item) => item.id));
+  return history;
+}
+
+export async function clearSearchHistory() {
+  await ensureInitialData();
+  const tripId = await activeTripId();
+  await db.searchHistory.where('tripId').equals(tripId).delete();
+}
+
+export async function savePlace(input: Omit<SavedPlace, 'id' | 'tripId' | 'createdAt' | 'updatedAt'>) {
+  await ensureInitialData();
+  const now = new Date().toISOString();
+  const place: SavedPlace = {
+    ...input,
+    id: uuid(),
+    tripId: await activeTripId(),
+    createdAt: now,
+    updatedAt: now,
+  };
+  await db.savedPlaces.add(place);
+  return place;
+}
+
+export async function deleteSavedPlace(id: string) {
+  await ensureInitialData();
+  await db.savedPlaces.delete(id);
 }
 
 export async function saveTrip(trip: Trip) {
@@ -503,6 +607,9 @@ export async function exportBackup(): Promise<BackupData> {
     flights,
     flightStatusHistory,
     flightAlerts,
+    searchProviders,
+    searchHistory,
+    savedPlaces,
     settings,
   ] = await Promise.all([
     db.trips.toArray(),
@@ -516,10 +623,13 @@ export async function exportBackup(): Promise<BackupData> {
     db.flights.toArray(),
     db.flightStatusHistory.toArray(),
     db.flightAlerts.toArray(),
+    db.searchProviders.toArray(),
+    db.searchHistory.toArray(),
+    db.savedPlaces.toArray(),
     db.settings.get('settings'),
   ]);
   return {
-    version: '2.0.0',
+    version: '3.0.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,
@@ -532,6 +642,9 @@ export async function exportBackup(): Promise<BackupData> {
     flights,
     flightStatusHistory,
     flightAlerts,
+    searchProviders,
+    searchHistory,
+    savedPlaces,
     settings: settings ?? initialSettings,
   };
 }
@@ -563,6 +676,9 @@ export async function importBackup(data: BackupData, mode: 'replace' | 'merge') 
     await db.flights.bulkPut(data.flights.map((item) => ({ ...item, id: item.id || uuid() })));
     await db.flightStatusHistory.bulkPut(data.flightStatusHistory);
     await db.flightAlerts.bulkPut(data.flightAlerts);
+    await db.searchProviders.bulkPut(data.searchProviders ?? clone(initialSearchProviders));
+    await db.searchHistory.bulkPut(data.searchHistory ?? []);
+    await db.savedPlaces.bulkPut(data.savedPlaces ?? []);
     await db.settings.put({ ...data.settings, initialized: true });
   });
 }
