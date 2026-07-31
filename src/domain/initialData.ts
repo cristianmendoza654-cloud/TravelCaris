@@ -31,6 +31,7 @@ export const initialTrips: Trip[] = [
     exchangeRate: 1,
     budget: 0,
     travellers: [],
+    readinessOverrides: [],
     status: 'Próximo',
     createdAt: now,
     updatedAt: now,

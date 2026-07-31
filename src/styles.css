@@ -62,6 +62,8 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .muted { color: var(--muted); }
 .meta-row, .button-row, .icon-actions, .grid-actions, .filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
 .icon-actions button, .icon-actions a { width: 40px; height: 40px; display: inline-grid; place-items: center; border: 1px solid var(--line); border-radius: 8px; background: transparent; color: var(--ink); text-decoration: none; }
+.drag-handle { cursor: grab; touch-action: none; }
+.drag-handle:active { cursor: grabbing; }
 button, .external-button { min-height: 44px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 13px; background: var(--surface); color: var(--ink); display: inline-flex; align-items: center; justify-content: center; gap: 7px; text-decoration: none; cursor: pointer; transition: border-color 160ms ease, background-color 160ms ease, color 160ms ease, transform 160ms ease; }
 button:hover, .external-button:hover { border-color: color-mix(in srgb, var(--brand) 60%, var(--line)); }
 button:active, .external-button:active { transform: translateY(1px); }
@@ -179,11 +181,14 @@ textarea { min-height: 86px; resize: vertical; }
 .readiness-progress { height: 8px; overflow: hidden; border-radius: 999px; background: var(--surface-alt); }
 .readiness-progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--brand), var(--green)); transition: width 280ms ease; }
 .readiness-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
-.readiness-steps a { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 7px; color: var(--ink); text-decoration: none; }
-.readiness-steps a > span { display: flex; align-items: center; gap: 7px; min-width: 0; }
-.readiness-steps a > strong { color: var(--brand); font-size: 0.72rem; }
-.readiness-steps a.done { color: var(--muted); background: var(--surface-alt); }
-.readiness-steps a.done > strong { color: var(--green); }
+.readiness-step { display: grid; grid-template-columns: minmax(0, 1fr) 40px; align-items: stretch; min-width: 0; border: 1px solid var(--line); border-radius: 7px; overflow: hidden; }
+.readiness-step a { display: flex; justify-content: space-between; align-items: center; gap: 8px; min-width: 0; padding: 9px 10px; color: var(--ink); text-decoration: none; }
+.readiness-step a > span { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.readiness-step a > strong { color: var(--brand); font-size: 0.72rem; }
+.readiness-step > button { width: 40px; min-height: 40px; padding: 0; border: 0; border-left: 1px solid var(--line); border-radius: 0; color: var(--brand); background: var(--surface); }
+.readiness-step.done { color: var(--muted); background: var(--surface-alt); }
+.readiness-step.done a { color: var(--muted); }
+.readiness-step.done a > strong, .readiness-step.done > button { color: var(--green); }
 .itinerary-empty, .flight-empty { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; padding: 20px; border: 1px dashed color-mix(in srgb, var(--brand) 55%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--brand) 5%, var(--surface)); }
 .itinerary-empty > svg, .flight-empty > svg { color: var(--brand); }
 .itinerary-empty h2, .itinerary-empty p, .flight-empty h3, .flight-empty p { margin: 0; }
@@ -333,6 +338,10 @@ textarea { min-height: 86px; resize: vertical; }
 .empty-state h2, .empty-state p, .privacy-note p { margin: 0; }
 .empty-state p { margin-top: 4px; color: var(--muted); }
 .privacy-note { display: grid; grid-template-columns: auto 1fr; gap: 10px; align-items: start; padding: 12px; border: 1px solid color-mix(in srgb, var(--green) 55%, var(--line)); border-radius: 8px; background: color-mix(in srgb, var(--green) 8%, var(--surface)); }
+.geocode-option { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); }
+.geocode-option input { width: 20px; height: 20px; margin-top: 1px; }
+.geocode-option span { display: grid; gap: 3px; }
+.geocode-option small { color: var(--muted); }
 .pdf-import-panel { border-top: 5px solid var(--brand); }
 .pdf-import-mode { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ai-itinerary-panel { border-top: 5px solid #7159a6; }

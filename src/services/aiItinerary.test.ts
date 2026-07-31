@@ -16,6 +16,7 @@ const brief: AiItineraryBrief = {
   transport: 'A pie y transporte público',
   accessibility: '',
   food: 'Sin restricciones',
+  completedPreparations: 'Hotel reservado',
   preparations: 'Reservar el Coliseo un mes antes',
   packing: 'Medicamentos y cargadores',
   notes: 'Una tarde tranquila',
@@ -31,6 +32,9 @@ describe('encargo de itinerario con IA', () => {
     expect(prompt).toContain('[RECORDATORIO]');
     expect(prompt).toContain('[EQUIPAJE]');
     expect(prompt).toContain('[FIN_TRAVELCARIS]');
+    expect(prompt).toContain('TRAVELCARIS-AI-PDF-V3');
+    expect(prompt).toContain('FECHA_VERIFICACION');
+    expect(prompt).toContain('Hotel reservado');
   });
 
   it('prohíbe solicitar o incluir secretos de viaje', () => {

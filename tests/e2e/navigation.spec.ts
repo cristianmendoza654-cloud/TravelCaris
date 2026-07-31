@@ -106,6 +106,27 @@ test('importa en WebKit móvil sin depender de APIs de archivo modernas ni del M
   await expect(page.getByText(/Formato TravelCaris IA detectado/i)).toBeVisible();
 });
 
+test('ubica automáticamente los lugares importados en el mapa', async ({ page }) => {
+  await page.route('https://nominatim.openstreetmap.org/search?**', (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify([{ lat: '41.8902', lon: '12.4922' }]),
+  }));
+  await page.goto('/mas');
+  await page.getByRole('button', { name: 'Importar PDF' }).click();
+  await page.locator('input[type="file"][accept*="pdf"]').setInputFiles({
+    name: 'roma-con-ubicacion.pdf',
+    mimeType: 'application/pdf',
+    buffer: travelCarisPdfFixture(),
+  });
+  await expect(page.getByLabel('Ubicar lugares automáticamente')).toBeChecked();
+  await page.getByRole('button', { name: 'Confirmar importación' }).click();
+  await page.getByRole('navigation', { name: /principal/i }).getByRole('link', { name: /Mapa/i }).click();
+
+  const placeSelect = page.getByLabel('Lugar que quieres ubicar');
+  await expect(placeSelect.locator('option', { hasText: 'Actualizar · Coliseo' })).toHaveCount(1);
+  await expect(placeSelect.locator('option', { hasText: 'Sin ubicar · Coliseo' })).toHaveCount(0);
+});
+
 test('importa un PDF real en WebKit móvil cuando se proporciona localmente', async ({ page }) => {
   const pdfPath = process.env.TRAVELCARIS_TEST_PDF;
   test.skip(!pdfPath, 'No se proporcionó un PDF privado para esta comprobación local.');
@@ -127,6 +148,32 @@ test('muestra la ubicación actual solo después de conceder permiso', async ({ 
   await expect(page.getByRole('button', { name: 'Detener seguimiento' })).toBeVisible();
 });
 
+test('los controles de una tarjeta permiten editar, revisar y reordenar', async ({ page }) => {
+  await page.goto('/itinerario');
+  await page.getByRole('button', { name: 'Crear', exact: true }).click();
+  await page.getByLabel('Título').fill('Museo de prueba');
+  await page.getByLabel('Dirección', { exact: true }).fill('Piazza Navona, Roma');
+  await page.getByRole('button', { name: 'Guardar', exact: true }).click();
+
+  const card = page.locator('.activity-card').filter({ hasText: 'Museo de prueba' });
+  await expect(card.getByRole('button', { name: 'Reordenar Museo de prueba' })).toBeVisible();
+  await card.getByRole('button', { name: 'Editar actividad' }).click();
+  await expect(page.getByRole('dialog', { name: 'Editor de actividad' })).toBeVisible();
+  await expect(page.getByLabel('Título')).toHaveValue('Museo de prueba');
+  await page.getByRole('button', { name: 'Cancelar' }).click();
+
+  await expect(card.getByText('Verificar datos')).toBeVisible();
+  await card.getByRole('button', { name: 'Marcar datos como revisados' }).click();
+  await expect(card.getByText('Verificar datos')).toHaveCount(0);
+});
+
+test('permite marcar manualmente un paso de preparación como revisado', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: /Marcar como revisado: Completar perfil/i }).click();
+  await expect(page.getByText('Revisado', { exact: true }).first()).toBeVisible();
+  await expect(page.getByRole('button', { name: /Marcar pendiente: Completar perfil/i })).toBeVisible();
+});
+
 test('prepara con IA un encargo compatible con la importación PDF', async ({ page }) => {
   await page.goto('/');
   const navigation = page.getByRole('navigation', { name: /principal/i });
@@ -138,7 +185,7 @@ test('prepara con IA un encargo compatible con la importación PDF', async ({ pa
   await page.getByLabel('Qué quieres hacer en este viaje').fill('Historia, parques y comida local con un ritmo tranquilo.');
   await page.getByRole('button', { name: /Preparar instrucciones/i }).click();
 
-  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V2');
+  await expect(page.getByLabel('Encargo preparado')).toContainText('TRAVELCARIS-AI-PDF-V3');
   await expect(page.getByRole('link', { name: 'Abrir ChatGPT' })).toHaveAttribute('href', 'https://chatgpt.com/');
   await page.getByRole('button', { name: 'Ya tengo el PDF' }).click();
   await expect(page.getByRole('heading', { name: 'Rellenar desde un PDF' })).toBeVisible();
@@ -158,7 +205,7 @@ test('elimina alojamientos y permite restablecer la aplicación', async ({ page 
   await page.getByRole('button', { name: 'Ajustes', exact: true }).click();
   page.once('dialog', (dialog) => dialog.accept());
   await page.getByRole('button', { name: 'Restablecer aplicación' }).click();
-  await expect(page.getByText('TravelCaris 3.6.0')).toBeVisible();
+  await expect(page.getByText('TravelCaris 3.7.0')).toBeVisible();
   await page.getByRole('button', { name: 'Alojamientos', exact: true }).click();
   await expect(page.getByText('Todavía no hay alojamientos en este viaje.')).toBeVisible();
 });

@@ -13,13 +13,15 @@ export interface AiItineraryBrief {
   transport: string;
   accessibility: string;
   food: string;
+  completedPreparations: string;
   preparations: string;
   packing: string;
   notes: string;
 }
 
-export const travelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V2';
-export const legacyTravelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V1';
+export const travelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V3';
+export const legacyTravelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V2';
+export const originalTravelCarisAiFormat = 'TRAVELCARIS-AI-PDF-V1';
 
 export function buildAiItineraryPrompt(brief: AiItineraryBrief) {
   const details = [
@@ -36,6 +38,7 @@ export function buildAiItineraryPrompt(brief: AiItineraryBrief) {
     ['Transporte previsto', brief.transport],
     ['Movilidad y accesibilidad', brief.accessibility],
     ['Alimentación', brief.food],
+    ['Preparativos y reservas ya completados', brief.completedPreparations],
     ['Preparativos o fechas que recordar', brief.preparations],
     ['Equipaje especial', brief.packing],
     ['Peticiones del viajero', brief.notes],
@@ -47,15 +50,15 @@ INFORMACIÓN DISPONIBLE
 ${details}
 
 FASE 1: ENTREVISTA
-Antes de preparar el itinerario, revisa la información. Si faltan datos que afecten de verdad al resultado, haz una sola ronda de preguntas breves y agrupadas. No vuelvas a preguntar lo que ya está contestado. Pregunta especialmente por edades, horarios de llegada y salida, movilidad, presupuesto, reservas ya hechas, intereses prioritarios y ritmo si no están claros. No solicites pasaportes, localizadores, números de billete, datos bancarios ni otros secretos.
+Antes de preparar el itinerario, revisa la información. Si faltan datos que afecten de verdad al resultado, haz una sola ronda de preguntas breves y agrupadas. No vuelvas a preguntar lo que ya está contestado. Pregunta especialmente por edades, horarios de llegada y salida, movilidad, presupuesto, reservas ya hechas, tareas ya completadas, intereses prioritarios y ritmo si no están claros. No solicites pasaportes, localizadores, números de billete, datos bancarios ni otros secretos.
 
 FASE 2: PLANIFICACIÓN
-Cuando tengas las respuestas necesarias, crea un itinerario realista por días. Agrupa lugares cercanos, incluye tiempos de traslado, pausas y comidas, evita solapamientos y deja margen para imprevistos. Distingue datos confirmados de estimaciones. No inventes reservas, horarios, precios ni disponibilidad. Cuando puedas consultar internet, contrasta horarios y condiciones con fuentes oficiales e incluye sus enlaces. Añade alternativas para lluvia o cierres y ten en cuenta familias, accesibilidad, alimentación y presupuesto indicados.
+Cuando tengas las respuestas necesarias, crea un itinerario realista por días. Agrupa lugares cercanos, incluye tiempos de traslado, pausas y comidas, evita solapamientos y deja margen para imprevistos. Distingue datos confirmados de estimaciones. No inventes reservas, horarios, precios, coordenadas ni disponibilidad. Cuando puedas consultar internet, contrasta direcciones, horarios y condiciones con fuentes oficiales e incluye sus enlaces. Obtén para cada alojamiento y actividad una latitud y longitud precisas del acceso o establecimiento, no del centro de la ciudad; si no puedes verificarlas, déjalas vacías para que TravelCaris intente ubicarlas. Añade alternativas para lluvia o cierres y ten en cuenta familias, accesibilidad, alimentación y presupuesto indicados.
 
 FASE 3: DOCUMENTO FINAL
 Entrega un archivo PDF descargable, en español, con diseño claro y texto seleccionable. Incluye primero una versión cómoda para leer: resumen del viaje, itinerario diario, alojamientos, vuelos, presupuesto orientativo, reservas pendientes y fuentes que conviene verificar.
 
-Al final del PDF añade un anexo de texto en una sola columna. Debe comenzar exactamente por ${travelCarisAiFormat}. No uses tablas, viñetas, columnas ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y códigos de moneda ISO de tres letras. Incluye recordatorios solo cuando tengan una fecha útil y elementos de equipaje concretos, sin inventar necesidades. Usa una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
+Al final del PDF añade un anexo de texto en una sola columna. Debe comenzar exactamente por ${travelCarisAiFormat}. No uses tablas, viñetas, columnas ni saltos de línea dentro de un valor. Repite los bloques necesarios y no incluyas bloques vacíos. Usa fechas YYYY-MM-DD, horas HH:MM, coordenadas decimales y códigos de moneda ISO de tres letras. Conserva como completados los preparativos indicados por el viajero y no los conviertas en avisos pendientes. Incluye recordatorios solo cuando tengan una fecha útil y elementos de equipaje concretos, sin inventar necesidades. Usa una de estas categorías exactas: Monumento, Museo, Restaurante, Cafetería, Parque, Tienda, Transporte, Alojamiento, Aeropuerto, Actividad infantil, Reserva, Mercado, Paseo, Tour, Free tour, Ocio, Espectáculo, Experiencia, Emergencia, Otros.
 
 FORMATO EXACTO DEL ANEXO
 ${travelCarisAiFormat}
@@ -79,8 +82,8 @@ FIN: YYYY-MM-DD
 CHECK_IN: HH:MM
 CHECK_OUT: HH:MM
 TELEFONO: Teléfono público, si se conoce
-LATITUD: Decimal, si se conoce con seguridad
-LONGITUD: Decimal, si se conoce con seguridad
+LATITUD: Decimal verificado del alojamiento; vacío si no puede comprobarse
+LONGITUD: Decimal verificado del alojamiento; vacío si no puede comprobarse
 NOTAS: Una sola línea sin datos privados
 [FIN_ALOJAMIENTO]
 
@@ -91,14 +94,16 @@ FIN: HH:MM
 TITULO: Nombre breve
 CATEGORIA: Una categoría exacta de la lista
 DIRECCION: Dirección o punto de encuentro
-LATITUD: Decimal, si se conoce con seguridad
-LONGITUD: Decimal, si se conoce con seguridad
+LATITUD: Decimal verificado del acceso o lugar; vacío si no puede comprobarse
+LONGITUD: Decimal verificado del acceso o lugar; vacío si no puede comprobarse
 DURACION_MIN: Número entero
 DESCRIPCION: Una sola línea
 NOTAS: Una sola línea
 RESERVA: No necesaria, Recomendada, Necesaria, Pendiente o Reservada
 ENLACE_OFICIAL: URL oficial
 ENLACE_RESERVA: URL de reserva, si procede
+VERIFICACION: Verificado, Pendiente de verificar o Fuente no oficial
+FECHA_VERIFICACION: YYYY-MM-DD si se ha comprobado
 PRECIO_TOTAL: Número sin símbolo
 MONEDA: Código ISO de tres letras
 ENTORNO: Interior, Exterior, Mixto o Sin indicar
@@ -126,6 +131,7 @@ TITULO: Acción concreta que debe recordarse
 FECHA: YYYY-MM-DD
 HORA: HH:MM
 NOTAS: Una sola línea
+COMPLETADO: Si o No
 [FIN_RECORDATORIO]
 
 [EQUIPAJE]
@@ -134,11 +140,12 @@ ELEMENTO: Objeto o tarea concreta
 PERSONA: Persona responsable, si se conoce
 CANTIDAD: Número entero positivo
 NOTAS: Una sola línea
+PREPARADO: Si o No
 [FIN_EQUIPAJE]
 
 [FIN_TRAVELCARIS]
 
-Antes de entregar el PDF, comprueba que todas las actividades y recordatorios estén dentro de un intervalo razonable para el viaje, que no existan horas imposibles ni bloques duplicados y que el anexo conserve exactamente estas etiquetas.`;
+Antes de entregar el PDF, comprueba que cada lugar identificable tenga dirección completa y coordenadas verificadas, que cada actividad tenga su estado y fecha de verificación, que lo ya realizado figure como completado, que todas las actividades y recordatorios estén dentro de un intervalo razonable para el viaje, que no existan horas imposibles ni bloques duplicados y que el anexo conserve exactamente estas etiquetas.`;
 }
 
 function dateRange(startDate: string, endDate: string) {

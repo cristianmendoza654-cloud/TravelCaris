@@ -158,6 +158,41 @@ ENLACE_OFICIAL: javascript:alert(1)
     expect(result.activities[0].officialLink).toBe('');
   });
 
+  it('importa verificación y elementos completados del formato V3', () => {
+    const result = parseTravelDocumentText([`TRAVELCARIS-AI-PDF-V3
+[VIAJE]
+NOMBRE: Roma verificada
+DESTINO: Roma
+PAIS: Italia
+INICIO: 2027-09-03
+FIN: 2027-09-03
+[ACTIVIDAD]
+FECHA: 2027-09-03
+INICIO: 10:00
+TITULO: Coliseo
+CATEGORIA: Monumento
+DIRECCION: Piazza del Colosseo, Roma
+VERIFICACION: Verificado
+FECHA_VERIFICACION: 2027-08-20
+[FIN_ACTIVIDAD]
+[RECORDATORIO]
+TITULO: Comprar entradas
+FECHA: 2027-08-01
+HORA: 09:00
+COMPLETADO: Si
+[FIN_RECORDATORIO]
+[EQUIPAJE]
+LISTA: Documentación
+ELEMENTO: Seguro
+PREPARADO: Si
+[FIN_EQUIPAJE]
+[FIN_TRAVELCARIS]`]);
+    expect(result.sourceFormat).toBe('travelcaris-ai-v3');
+    expect(result.activities[0]).toMatchObject({ verificationStatus: 'Verificado', lastVerifiedAt: '2027-08-20' });
+    expect(result.reminders[0].done).toBe(true);
+    expect(result.packingItems[0].done).toBe(true);
+  });
+
   it('bloquea una importación con elementos fuera del viaje', () => {
     const result = parseTravelDocumentText(sample, 'viaje-ficticio.pdf');
     result.activities[0].day = '2030-01-01';

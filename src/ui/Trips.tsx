@@ -2,6 +2,7 @@ import { Check, Edit3, FileUp, Image as ImageIcon, LoaderCircle, MapPin, Plus, S
 import { useState } from 'react';
 import { categories, currencyCodes, type Trip, type TripStatus } from '../domain/types';
 import { imageFileToStoredImage } from '../services/files';
+import { geocodePdfDraft } from '../services/geocoding';
 import { parseTravelPdf, validatePdfImportDraft, type PdfImportDraft } from '../services/pdfImport';
 import { findAndStorePlaceImage } from '../services/placeImages';
 import type { AppSnapshot } from '../services/storage';
@@ -150,6 +151,8 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
     snapshot.activities.length || snapshot.accommodations.length || snapshot.flights.length ? 'new' : 'replace',
   );
   const [loading, setLoading] = useState(false);
+  const [autoLocate, setAutoLocate] = useState(true);
+  const [locationProgress, setLocationProgress] = useState('');
   const [error, setError] = useState('');
 
   const updateTrip = <K extends keyof PdfImportDraft['trip']>(key: K, value: PdfImportDraft['trip'][K]) => {
@@ -162,7 +165,7 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
         <div><p className="eyebrow">Importación local</p><h3>Rellenar desde un PDF</h3></div>
         <button className="icon-button" aria-label="Cerrar importación" title="Cerrar" onClick={onClose}><X size={18} /></button>
       </div>
-      <div className="privacy-note"><ShieldCheck size={20} /><p>El PDF se procesa en este dispositivo. No se sube a Vercel ni a ningún servicio externo.</p></div>
+      <div className="privacy-note"><ShieldCheck size={20} /><p>El PDF se procesa en este dispositivo. No se sube a Vercel ni a otro servidor. Si activas la ubicación automática, solo los nombres y direcciones públicas se consultan en OpenStreetMap.</p></div>
       {!draft && (
         <label className="file-button">
           {loading ? <><LoaderCircle className="spinning" size={18} /> Analizando PDF</> : <><FileUp size={18} /> Seleccionar PDF del viaje</>}
@@ -217,6 +220,11 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
           {draft.sourceFormat?.startsWith('travelcaris-ai-') && <div className="notice notice-neutral"><Check size={18} /><p><strong>Formato TravelCaris IA detectado.</strong> Los bloques estructurados se han leído con prioridad.</p></div>}
           {draft.warnings.length > 0 && <div className="notice notice-warning"><div><strong>Revisión necesaria</strong>{draft.warnings.map((warning) => <p key={warning}>{warning}</p>)}</div></div>}
           <ImportDetails draft={draft} onChange={setDraft} />
+          <label className="geocode-option">
+            <input type="checkbox" checked={autoLocate} onChange={(event) => setAutoLocate(event.target.checked)} />
+            <span><strong>Ubicar lugares automáticamente</strong><small>Completa en el mapa las coordenadas que falten usando OpenStreetMap. El PDF con coordenadas exactas es más fiable.</small></span>
+          </label>
+          {locationProgress && <p className="muted" role="status">{locationProgress}</p>}
           <div className="segmented-control pdf-import-mode" aria-label="Destino de la importación">
             <button className={mode === 'replace' ? 'selected' : ''} onClick={() => setMode('replace')}>Reemplazar abierto</button>
             <button className={mode === 'new' ? 'selected' : ''} onClick={() => setMode('new')}>Crear viaje nuevo</button>
@@ -236,13 +244,25 @@ function PdfImportPanel({ snapshot, refresh, notify, onClose }: TripsProps & { o
                 setLoading(true);
                 setError('');
                 try {
-                  await applyPdfImport(draft, mode);
+                  let importDraft = draft;
+                  let located = 0;
+                  let unresolved = 0;
+                  if (autoLocate && navigator.onLine) {
+                    const result = await geocodePdfDraft(draft, {
+                      onProgress: (current, total, label) => setLocationProgress(`Ubicando ${current} de ${total}: ${label}`),
+                    });
+                    importDraft = result.draft;
+                    located = result.located;
+                    unresolved = result.unresolved;
+                  }
+                  await applyPdfImport(importDraft, mode);
                   await refresh();
-                  notify('Viaje rellenado desde el PDF');
+                  notify(located ? `Viaje importado con ${located} lugares ubicados${unresolved ? ` y ${unresolved} pendientes` : ''}` : 'Viaje rellenado desde el PDF');
                   onClose();
                 } catch (reason) {
                   setError(reason instanceof Error ? reason.message : 'No se pudo guardar la importación.');
                 } finally {
+                  setLocationProgress('');
                   setLoading(false);
                 }
               }}

@@ -29,4 +29,16 @@ describe('preparación del viaje', () => {
     expect(result.steps.find((step) => step.id === 'packing')?.done).toBe(true);
     expect(result.percentage).toBe(100);
   });
+
+  it('permite validar manualmente un paso aunque la aplicación no pueda detectarlo', () => {
+    const result = travelReadiness({
+      trip: { ...initialTrips[0], readinessOverrides: ['profile'] },
+      activities: [],
+      accommodations: [],
+      flights: [],
+      documents: [],
+      packingItems: [],
+    });
+    expect(result.steps.find((step) => step.id === 'profile')).toMatchObject({ done: true, naturallyDone: false, manuallyReviewed: true });
+  });
 });

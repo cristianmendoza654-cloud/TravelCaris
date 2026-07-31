@@ -411,6 +411,7 @@ export async function createTrip(input: Pick<Trip, 'name' | 'destination' | 'cou
     exchangeRate: 1,
     budget: input.budget ?? 0,
     travellers: input.travellers ?? [],
+    readinessOverrides: [],
     status: 'Próximo',
     createdAt: now,
     updatedAt: now,
@@ -824,7 +825,7 @@ export async function exportBackup(): Promise<BackupData> {
     db.settings.get('settings'),
   ]);
   return {
-    version: '3.6.0',
+    version: '3.7.0',
     exportedAt: new Date().toISOString(),
     trips,
     activities,

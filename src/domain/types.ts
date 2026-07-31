@@ -28,6 +28,7 @@ export interface Trip {
   exchangeRateSource?: string;
   budget: number;
   travellers: string[];
+  readinessOverrides?: string[];
   status: TripStatus;
   createdAt: string;
   updatedAt: string;

@@ -26,6 +26,7 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
     transport: '',
     accessibility: '',
     food: '',
+    completedPreparations: '',
     preparations: '',
     packing: '',
     notes: trip.description,
@@ -94,7 +95,10 @@ export function AiItineraryPanel({ trip, notify, onClose, onImport }: AiItinerar
         <label>Alimentación<input value={brief.food} onChange={(event) => update('food', event.target.value)} placeholder="Alergias, preferencias..." /></label>
       </div>
       <div className="two-cols">
-        <label>Preparativos y fechas<input value={brief.preparations} onChange={(event) => update('preparations', event.target.value)} placeholder="Reservas, visados, check-in..." /></label>
+        <label>Ya confirmado o realizado<input value={brief.completedPreparations} onChange={(event) => update('completedPreparations', event.target.value)} placeholder="Vuelos, hotel, entradas, documentación..." /></label>
+        <label>Preparativos pendientes<input value={brief.preparations} onChange={(event) => update('preparations', event.target.value)} placeholder="Reservas, visados, check-in..." /></label>
+      </div>
+      <div className="two-cols">
         <label>Equipaje especial<input value={brief.packing} onChange={(event) => update('packing', event.target.value)} placeholder="Medicamentos, bebé, tecnología..." /></label>
       </div>
       <label>Qué quieres hacer en este viaje<textarea value={brief.notes} onChange={(event) => update('notes', event.target.value)} placeholder="Prioridades, planes imprescindibles, horarios, cosas que quieres evitar y cualquier petición especial" /></label>

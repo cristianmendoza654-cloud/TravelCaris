@@ -1,6 +1,6 @@
 import type { Accommodation, Activity, Flight, PackingItem, Reminder, Trip } from '../domain/types';
 import { categories, currencyCodes } from '../domain/types';
-import { legacyTravelCarisAiFormat, travelCarisAiFormat } from './aiItinerary';
+import { legacyTravelCarisAiFormat, originalTravelCarisAiFormat, travelCarisAiFormat } from './aiItinerary';
 
 export interface PdfImportDraft {
   fileName: string;
@@ -11,7 +11,7 @@ export interface PdfImportDraft {
   reminders: Array<Omit<Reminder, 'id' | 'tripId' | 'notifiedAt'>>;
   packingItems: Array<Omit<PackingItem, 'id' | 'tripId' | 'order'>>;
   warnings: string[];
-  sourceFormat?: 'travelcaris-ai-v2' | 'travelcaris-ai-v1' | 'general';
+  sourceFormat?: 'travelcaris-ai-v3' | 'travelcaris-ai-v2' | 'travelcaris-ai-v1' | 'general';
 }
 
 const months: Record<string, number> = {
@@ -254,9 +254,13 @@ interface StructuredSection {
 }
 
 function parseTravelCarisAiDocument(lines: string[], fileName: string): PdfImportDraft | null {
-  const markerIndex = lines.findIndex((line) => [travelCarisAiFormat, legacyTravelCarisAiFormat].includes(fold(line).toUpperCase()));
+  const formats = [travelCarisAiFormat, legacyTravelCarisAiFormat, originalTravelCarisAiFormat];
+  const markerIndex = lines.findIndex((line) => formats.some((format) => format === fold(line).toUpperCase()));
   if (markerIndex < 0) return null;
-  const sourceFormat = fold(lines[markerIndex]).toUpperCase() === travelCarisAiFormat ? 'travelcaris-ai-v2' : 'travelcaris-ai-v1';
+  const marker = fold(lines[markerIndex]).toUpperCase();
+  const sourceFormat: PdfImportDraft['sourceFormat'] = marker === travelCarisAiFormat
+    ? 'travelcaris-ai-v3'
+    : marker === legacyTravelCarisAiFormat ? 'travelcaris-ai-v2' : 'travelcaris-ai-v1';
 
   const sections = structuredSections(lines.slice(markerIndex + 1));
   const tripSection = sections.find((section) => section.name === 'VIAJE');
@@ -371,6 +375,7 @@ function structuredActivity(section: StructuredSection, fallbackDate: string): P
   const reservation = reservationStatus(field(section, 'RESERVA'));
   const lat = coordinate(field(section, 'LATITUD'), -90, 90);
   const lng = coordinate(field(section, 'LONGITUD'), -180, 180);
+  const verifiedAt = field(section, 'FECHA_VERIFICACION');
 
   return {
     title,
@@ -392,8 +397,9 @@ function structuredActivity(section: StructuredSection, fallbackDate: string): P
     status: 'Pendiente',
     sourceName: 'PDF preparado para TravelCaris',
     sourceUrl: safeHttpUrl(field(section, 'ENLACE_OFICIAL')),
-    verificationStatus: 'Pendiente de verificar',
-    verificationNote: 'Comprueba horarios, precios y reservas en la fuente oficial.',
+    verificationStatus: verificationStatus(field(section, 'VERIFICACION')),
+    lastVerifiedAt: validIsoDate(verifiedAt) ? verifiedAt : '',
+    verificationNote: validIsoDate(verifiedAt) ? 'Datos comprobados al preparar el PDF.' : 'Comprueba horarios, precios y reservas en la fuente oficial.',
     priceDetails: {
       kind: total ? 'Aproximado' : 'Desconocido',
       adult: 0,
@@ -469,7 +475,7 @@ function structuredReminder(section: StructuredSection): PdfImportDraft['reminde
   const date = field(section, 'FECHA');
   const time = field(section, 'HORA');
   if (!title || !validIsoDate(date) || !validTime(time)) return null;
-  return { title, date, time, notes: field(section, 'NOTAS'), done: false };
+  return { title, date, time, notes: field(section, 'NOTAS'), done: yes(field(section, 'COMPLETADO')) };
 }
 
 function structuredPackingItem(section: StructuredSection): PdfImportDraft['packingItems'][number] | null {
@@ -481,7 +487,7 @@ function structuredPackingItem(section: StructuredSection): PdfImportDraft['pack
   return {
     list,
     title,
-    done: false,
+    done: yes(field(section, 'PREPARADO')),
     person: field(section, 'PERSONA'),
     quantity: positiveInteger(field(section, 'CANTIDAD')) || 1,
     notes: field(section, 'NOTAS'),
@@ -815,6 +821,17 @@ function reservationStatus(value: string): Activity['reservationStatus'] {
   if (normalized === 'PENDIENTE') return 'Pendiente';
   if (normalized === 'RESERVADA') return 'Reservada';
   return 'No necesaria';
+}
+
+function verificationStatus(value: string): Activity['verificationStatus'] {
+  const normalized = fold(value).toUpperCase();
+  if (normalized === 'VERIFICADO') return 'Verificado';
+  if (normalized === 'FUENTE NO OFICIAL') return 'Fuente no oficial';
+  return 'Pendiente de verificar';
+}
+
+function yes(value: string) {
+  return ['SI', 'SÍ', 'YES', 'TRUE', '1'].includes(value.trim().toUpperCase());
 }
 
 function environment(value: string): Activity['environment'] {

@@ -20,6 +20,7 @@ import {
   BellRing,
   CalendarPlus,
   CalendarDays,
+  BadgeCheck,
   Check,
   Clock3,
   ClipboardList,
@@ -28,6 +29,7 @@ import {
   Euro,
   ExternalLink,
   FileText,
+  GripVertical,
   Home,
   Hospital,
   Image as ImageIcon,
@@ -328,9 +330,26 @@ function TodayView({ snapshot, refresh, notify }: ViewProps) {
         <div className="readiness-progress" role="progressbar" aria-label="Preparación del viaje" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readiness.percentage}><span style={{ width: `${readiness.percentage}%` }} /></div>
         <div className="readiness-steps">
           {readiness.steps.map((step) => (
-            <NavLink key={step.id} className={step.done ? 'done' : ''} to={step.href} onClick={() => step.tab && sessionStorage.setItem('travelcaris-more-tab', step.tab)}>
-              <span>{step.done ? <Check size={16} /> : <Clock3 size={16} />}{step.label}</span><strong>{step.done ? 'Listo' : 'Revisar'}</strong>
-            </NavLink>
+            <div key={step.id} className={`readiness-step ${step.done ? 'done' : ''}`}>
+              <NavLink to={step.href} onClick={() => step.tab && sessionStorage.setItem('travelcaris-more-tab', step.tab)}>
+                <span>{step.done ? <Check size={16} /> : <Clock3 size={16} />}{step.label}</span>
+                <strong>{step.manuallyReviewed ? 'Revisado' : step.done ? 'Listo' : 'Revisar'}</strong>
+              </NavLink>
+              <button
+                aria-label={`${step.manuallyReviewed ? 'Marcar pendiente' : 'Marcar como revisado'}: ${step.label}`}
+                title={step.manuallyReviewed ? 'Volver a marcar pendiente' : 'Marcar como revisado'}
+                onClick={async () => {
+                  const overrides = new Set(snapshot.activeTrip.readinessOverrides ?? []);
+                  if (overrides.has(step.id)) overrides.delete(step.id);
+                  else overrides.add(step.id);
+                  await saveTrip({ ...snapshot.activeTrip, readinessOverrides: [...overrides] });
+                  await refresh();
+                  notify(overrides.has(step.id) ? 'Paso marcado como revisado' : 'Paso marcado como pendiente');
+                }}
+              >
+                {step.manuallyReviewed ? <RotateCcw size={16} /> : <BadgeCheck size={16} />}
+              </button>
+            </div>
           ))}
         </div>
       </section>
@@ -436,7 +455,7 @@ function ItineraryView({ snapshot, refresh, notify }: ViewProps) {
           <div className="timeline">
             {dayActivities.map((activity) => (
               <SortableActivity key={activity.id} activity={activity}>
-                <ActivityCard activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} />
+                {(dragHandle) => <ActivityCard activity={activity} trip={snapshot.activeTrip} availableDays={availableDays} refresh={refresh} notify={notify} staleDays={snapshot.settings.placeInfoStaleDays} onEdit={() => setEditing(activity)} dragHandle={dragHandle} />}
               </SortableActivity>
             ))}
           </div>
@@ -877,13 +896,14 @@ function Hero({ trip, title, subtitle, action }: { trip: Trip; title: string; su
   );
 }
 
-function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, staleDays = 30, compact = false }: {
+function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, dragHandle, staleDays = 30, compact = false }: {
   activity: Activity;
   trip: Trip;
   availableDays: string[];
   refresh: () => Promise<void>;
   notify: (message: string) => void;
   onEdit?: () => void;
+  dragHandle?: React.ReactNode;
   staleDays?: number;
   compact?: boolean;
 }) {
@@ -950,7 +970,9 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
         {!compact && activity.rainPlan && <p className="detail-line"><strong>Lluvia:</strong> {activity.rainPlan}</p>}
         {!compact && (activity.strollerFriendly || activity.accessibility) && <p className="detail-line"><strong>Acceso:</strong> {activity.strollerFriendly ? 'Apto para carrito. ' : ''}{activity.accessibility}</p>}
         <div className="icon-actions">
+          {dragHandle}
           {onEdit && <button aria-label="Editar actividad" title="Editar" onClick={onEdit}><Edit3 size={18} /></button>}
+          {stale && <button aria-label="Marcar datos como revisados" title="Datos revisados" onClick={async () => { await saveActivity({ ...activity, verificationStatus: 'Verificado', lastVerifiedAt: new Date().toISOString().slice(0, 10) }); await refresh(); notify('Datos de la actividad marcados como revisados'); }}><BadgeCheck size={18} /></button>}
           <button aria-label="Duplicar actividad" title="Duplicar" onClick={async () => { await duplicateActivity(activity); await refresh(); notify('Actividad duplicada'); }}><ClipboardList size={18} /></button>
           <button aria-label="Compartir actividad" title="Compartir" onClick={doShare}><Share2 size={18} /></button>
           <a aria-label="Abrir mapa" title="Abrir mapa" href={googleMapsSearch(activity.address || activity.title)} target="_blank" rel="noreferrer"><MapIcon size={18} /></a>
@@ -965,11 +987,15 @@ function ActivityCard({ activity, trip, availableDays, refresh, notify, onEdit, 
   );
 }
 
-function SortableActivity({ activity, children }: { activity: Activity; children: React.ReactNode }) {
+function SortableActivity({ activity, children }: { activity: Activity; children: (dragHandle: React.ReactNode) => React.ReactNode }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: activity.id });
   return (
-    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }} {...attributes} {...listeners}>
-      {children}
+    <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}>
+      {children(
+        <button className="drag-handle" aria-label={`Reordenar ${activity.title}`} title="Arrastrar para ordenar" {...attributes} {...listeners}>
+          <GripVertical size={18} />
+        </button>,
+      )}
     </div>
   );
 }
@@ -1587,7 +1613,7 @@ function SettingsPanel({ snapshot, refresh, notify }: ViewProps) {
       <div className="danger-zone">
         <div><h3>Restablecer aplicación</h3><p>Elimina todos los viajes, documentos, imágenes, gastos y ajustes guardados en este dispositivo. La aplicación volverá a su estado inicial.</p></div>
         <button className="danger-button" onClick={async () => { if (confirm('Se eliminarán definitivamente todos los datos locales de TravelCaris. Esta acción no se puede deshacer. ¿Restablecer la aplicación?')) { await restoreInitialData(); setPreview(null); await refresh(); notify('Aplicación restablecida'); } }}><RotateCcw size={18} /> Restablecer aplicación</button>
-        <p>TravelCaris 3.6.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
+        <p>TravelCaris 3.7.0. Los datos se guardan en IndexedDB del navegador. Safari puede liberar almacenamiento si el dispositivo necesita espacio; exporta copias periódicamente.</p>
       </div>
     </div>
   );
